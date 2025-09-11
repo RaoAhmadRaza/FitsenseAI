@@ -12,12 +12,20 @@ import 'logic/auth_bloc/auth_bloc.dart';
 import 'logic/auth_bloc/auth_event.dart';
 import 'features/auth/data/repositories/auth_repository.dart';
 
+// Global user info (populated after sign-in)
+String? gUserUid;
+String? gUserEmail;
+String? gUserDisplayName;
+String? gUserPhotoUrl;
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(
     options: firebase_options.DefaultFirebaseOptions.currentPlatform,
   );
   await Hive.initFlutter();
+  // Open (or create) a Hive box for user profile caching
+  await Hive.openBox('userBox');
 
   runApp(
     RepositoryProvider(
