@@ -48,6 +48,42 @@
           ]
         }
       }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:696028434424:android:f2d7bd97367725aeecd00d",
+        "android_client_info": {
+          "package_name": "com.example.ai_fitness_tracker"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "696028434424-86u9jmmj0rlgmvijosmp2kcte4dd00hi.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBuX2mHKjdDhgICwcPjy1sipvPI3WcsX40"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "696028434424-86u9jmmj0rlgmvijosmp2kcte4dd00hi.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "696028434424-0cikk0gi94raloevlun40tn5irs4umj9.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.ahmad.aifitnesstracker"
+              }
+            }
+          ]
+        }
+      }
     }
   ],
   "configuration_version": "1"

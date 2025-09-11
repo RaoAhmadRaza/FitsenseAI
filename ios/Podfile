@@ -1,5 +1,8 @@
 # Uncomment this line to define a global platform for your project
-platform :ios, '12.0'
+platform :ios, '15.0'
+
+# Pin Firebase iOS SDK to a Swift 5-compatible version if you are not on Xcode 16+ (Swift 6)
+$FirebaseSDKVersion = '11.10.0'
 
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
@@ -39,5 +42,21 @@ end
 post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_ios_build_settings(target)
+    # Ensure all pods use at least iOS 15.0 to match Firebase requirements
+    target.build_configurations.each do |config|
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
+    end
+  end
+
+  # Workaround for Xcode 15 (Swift 5) compiling Swift 6-only 'sending' keyword used by FirebaseSharedSwift.
+  # This replaces 'throws -> sending Any' with 'throws -> Any' in FirebaseDataEncoder.swift.
+  encoder_path = File.join('Pods', 'FirebaseSharedSwift', 'FirebaseSharedSwift', 'Sources', 'third_party', 'FirebaseDataEncoder', 'FirebaseDataEncoder.swift')
+  if File.exist?(encoder_path)
+    contents = File.read(encoder_path)
+    patched = contents.gsub(' throws -> sending Any', ' throws -> Any')
+    if contents != patched
+      File.write(encoder_path, patched)
+      Pod::UI.puts "Patched Swift 6 keyword in #{encoder_path} for Swift 5 compatibility."
+    end
   end
 end
