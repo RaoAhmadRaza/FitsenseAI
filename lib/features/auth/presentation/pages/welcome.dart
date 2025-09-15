@@ -12,6 +12,8 @@ import 'package:entry/entry.dart';
 import 'package:lottie/lottie.dart';
 import '../../../../main.dart'
     show gUserUid, gUserEmail, gUserDisplayName, gUserPhotoUrl; // globals
+import '../../../../core/db/app_database.dart';
+import '../../../../core/utils/logger.dart';
 
 class WelcomeScreen extends StatefulWidget {
   const WelcomeScreen({super.key});
@@ -65,6 +67,14 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
       'photoUrl': gUserPhotoUrl,
       'lastLogin': DateTime.now().toIso8601String(),
     });
+
+    // Persist profile basics to SQLite (ignore failures gracefully)
+    try {
+      await AppDatabase.saveUserProfileFromGlobals();
+      logInfo('User profile persisted to SQLite');
+    } catch (e, st) {
+      logError('Failed saving profile to SQLite: $e', st);
+    }
 
     if (!mounted) return;
     setState(() {
@@ -385,7 +395,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
             child: Lottie.network(
               'https://lottie.host/2d58d506-a04c-4354-b6ed-b03812317093/5fPPvtbClc.json',
               width: 190,
-              height: 190,
+              height: 200,
             ),
           ),
           const SizedBox(height: 20),
@@ -453,6 +463,25 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
             ),
           ),
           const SizedBox(height: 18),
+          Entry.offset(
+            yOffset: 40,
+            delay: const Duration(milliseconds: 700),
+            duration: const Duration(milliseconds: 800),
+            curve: Curves.easeOutCubic,
+            child: TextButton.icon(
+              onPressed: () => Navigator.pushNamed(context, '/sensors'),
+              icon: const Icon(Icons.sensors, color: Colors.redAccent),
+              label: const Text(
+                'Open Sensor Demo',
+                style: TextStyle(
+                  fontFamily: 'Sora',
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
           Entry.opacity(
             delay: const Duration(milliseconds: 600),
             curve: Curves.easeInOut,

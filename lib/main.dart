@@ -12,6 +12,8 @@ import 'app.dart';
 import 'logic/auth_bloc/auth_bloc.dart';
 import 'logic/auth_bloc/auth_event.dart';
 import 'features/auth/data/repositories/auth_repository.dart';
+import 'core/db/app_database.dart'; // SQLite layer
+import 'features/debug/sensor_demo_page.dart';
 
 // Global user info (populated after sign-in)
 String? gUserUid;
@@ -35,6 +37,14 @@ void main() async {
   await Hive.initFlutter();
   // Open (or create) a Hive box for user profile caching
   await Hive.openBox('userBox');
+
+  // Initialize SQLite and attempt to hydrate extended profile into globals.
+  try {
+    await AppDatabase.instance();
+    await AppDatabase.loadUserProfileIntoGlobals();
+  } catch (e) {
+    // Silently ignore DB init errors for now; could log or report in future.
+  }
 
   runApp(
     RepositoryProvider(
@@ -88,6 +98,7 @@ class _RootApp extends StatelessWidget {
         '/': (_) => const WelcomeScreen(), // login screen
         '/home': (_) => const MyHomePage(title: 'AI Fitness Tracker'),
         '/profile': (_) => const ProfilePage(),
+        '/sensors': (_) => const SensorDemoPage(),
       },
     );
   }

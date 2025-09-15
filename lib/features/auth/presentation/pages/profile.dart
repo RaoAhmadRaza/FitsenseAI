@@ -199,7 +199,7 @@ class _ProfilePageState extends State<ProfilePage> {
               Column(
                 children: [
                   Text(
-                    name,
+                    name.toUpperCase(),
                     style: const TextStyle(
                       fontSize: 24,
                       fontWeight: FontWeight.w600,

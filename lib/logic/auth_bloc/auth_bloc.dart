@@ -2,6 +2,9 @@
 
 import 'package:bloc/bloc.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import '../../core/db/app_database.dart';
+import '../../core/utils/logger.dart';
 
 import '../../features/auth/data/repositories/auth_repository.dart';
 import 'auth_event.dart';
@@ -95,6 +98,16 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     emit(AuthLoading());
     try {
       await _authRepository.signOut();
+      try {
+        // Clear persisted profile (SQLite + Hive cache)
+        await AppDatabase.clearUserProfile(resetGlobals: true);
+        if (Hive.isBoxOpen('userBox')) {
+          await Hive.box('userBox').clear();
+        }
+        logInfo('Profile data cleared on sign-out');
+      } catch (e, st) {
+        logError('Failed clearing persisted profile on sign-out: $e', st);
+      }
       emit(AuthUnauthenticated());
     } catch (e) {
       emit(AuthError(e.toString()));
