@@ -1,8 +1,11 @@
+<div align="center">
 # FitSense AI – Intelligent Fitness Companion
 
 Lean Flutter app delivering a staged welcome → authentication → greeting experience using Firebase Auth, Hive (session cache), and SQLite (structured profile groundwork). Built on BLoC for predictable state and future motion/workout intelligence.
 
 ![Platforms](https://img.shields.io/badge/platform-iOS%20|%20Android%20|%20Web%20|%20Desktop-blue) ![State](https://img.shields.io/badge/state-BLoC-green) ![Firebase](https://img.shields.io/badge/backend-Firebase%20Auth-orange)
+
+</div>
 
 ## 1. Vision
 
