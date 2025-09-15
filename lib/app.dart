@@ -4,6 +4,20 @@ import 'features/presentation/widgets/colors.dart';
 import 'logic/auth_bloc/auth_bloc.dart';
 import 'logic/auth_bloc/auth_event.dart';
 import 'logic/auth_bloc/auth_state.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import 'main.dart'
+    show
+        gUserUid,
+        gUserEmail,
+        gUserDisplayName,
+        gUserPhotoUrl,
+        gUserAge,
+        gUserWeightKg,
+        gUserHeightCm,
+        gUserHeightUnit,
+        gUserGender,
+        gUserGoals,
+        gUserPrimaryGoal;
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
@@ -131,9 +145,33 @@ class _MyHomePageState extends State<MyHomePage> {
               SizedBox(height: 20),
               TextButton(
                 onPressed: () {
+                  // Clear cached profile/auth data before emitting sign-out
+                  try {
+                    if (Hive.isBoxOpen('userBox')) {
+                      final box = Hive.box('userBox');
+                      box.deleteAll([
+                        'uid',
+                        'email',
+                        'displayName',
+                        'photoUrl',
+                        'profile',
+                      ]);
+                    }
+                  } catch (_) {}
+                  // Reset globals
+                  gUserUid = null;
+                  gUserEmail = null;
+                  gUserDisplayName = null;
+                  gUserPhotoUrl = null;
+                  gUserAge = null;
+                  gUserWeightKg = null;
+                  gUserHeightCm = null;
+                  gUserHeightUnit = 'cm';
+                  gUserGender = null;
+                  gUserGoals.clear();
+                  gUserPrimaryGoal = null;
                   // Dispatch sign-out via AuthBloc
                   context.read<AuthBloc>().add(const AuthSignOutRequested());
-                  // Optional local UI reset
                   setState(() {
                     _counter = 0;
                   });

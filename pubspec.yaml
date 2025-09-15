@@ -51,6 +51,12 @@ dependencies:
   simple_icons: ^14.6.1
   icons_plus: ^5.0.0
   sign_in_with_apple: ^7.0.1
+  horizontal_slider: ^0.0.3
+  animated_weight_picker: ^1.0.3
+  awesome_icons: ^1.1.0
+  dynamic_multi_step_form: ^1.1.5
+  msh_checkbox: ^2.0.1
+  wheel_chooser: ^1.1.2
 
 
 dev_dependencies:

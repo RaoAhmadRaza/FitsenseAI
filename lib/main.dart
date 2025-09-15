@@ -1,3 +1,4 @@
+import 'package:ai_fitness_tracker/features/auth/presentation/pages/profile.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -17,6 +18,14 @@ String? gUserUid;
 String? gUserEmail;
 String? gUserDisplayName;
 String? gUserPhotoUrl;
+// Extended profile fields (persisted locally via Hive)
+int? gUserAge; // years
+double? gUserWeightKg; // kilograms
+double? gUserHeightCm; // canonical centimeters
+String gUserHeightUnit = 'cm';
+String? gUserGender; // 'male' | 'female'
+Set<String> gUserGoals = <String>{};
+String? gUserPrimaryGoal; // one of goals (optional)
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -78,6 +87,7 @@ class _RootApp extends StatelessWidget {
       routes: {
         '/': (_) => const WelcomeScreen(), // login screen
         '/home': (_) => const MyHomePage(title: 'AI Fitness Tracker'),
+        '/profile': (_) => const ProfilePage(),
       },
     );
   }
