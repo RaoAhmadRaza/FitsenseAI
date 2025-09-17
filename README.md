@@ -46,6 +46,48 @@ Next steps: workout logging, rep counting, adaptive recommendations, and AI-driv
 - Hive for fast warm start; SQLite for extended profile/workout groundwork.  
 - Fail-soft approach: persistence/cache errors never block UI.  
 
+### Plan-Driven Workout Sessions (Wave Additions)
+
+Deterministic session & exercise identifiers + queued progression logic enabling reliable resume, analytics correlation, and future deep-linking.
+
+ID Scheme:
+
+```text
+workoutId: plan_<planId>_<epochMillis>
+exerciseId: plan_<planId>ex<index>    (index = 1-based position within plan)
+```
+
+Session Flow:
+
+```text
+Select Plan -> startPlanSession(plan) -> seed ExerciseProgress queue
+  -> startExercise(first) -> incrementRep()/completeSet() loop
+    -> on last set of exercise: startExercise(next) OR completeSession()
+      -> navigate to sessionSummary(workoutId)
+```
+
+Recovery & Resume:
+
+- Queue persisted (Hive) via `WorkoutSession` + `ExerciseProgress` entries.
+- Incomplete session can be resumed by reconstructing active exercise from persisted progress (current exercise = first with uncompleted sets).
+- Parsing helpers: `_parseExerciseIndex(exerciseId)` & `extractPlanIdFromWorkoutId()` ensure robust reverse mapping.
+
+Edge Handling:
+
+- Starting a new plan auto-completes lingering incomplete session to avoid multi-session ambiguity.
+- Missing / corrupt progress entries are recreated on the fly (fail-soft) so the user never loses the ability to proceed.
+
+Accessibility Enhancements:
+
+- Live region updates for rep counting (announce increment & set completion).
+- Focus shifts to next exercise card upon transition for screen reader continuity.
+
+Future Enhancements (Planned):
+
+- Real-time motion-based rep detection feeding `incrementRep`.
+- Pause / resume states with wall-clock drift reconciliation.
+- Deep link: `ai-fit://workout/<workoutId>` opens active or summary view.
+
 ---
 
 ## 3. Architecture Overview
@@ -61,6 +103,69 @@ Persistence:
   SQLite (profile/workouts groundwork)
 Principles: minimal now, extensible later, resilience by design.
 
+## 2b. Routing Map (Wave Additions)
+
+Centralized in `lib/core/navigation/app_routes.dart`.
+
+| Route Helper / Name | Pattern | Purpose |
+| ------------------- | ------- | ------- |
+| AppRoutes.home | /home | Post-auth home/dashboard (placeholder) |
+| AppRoutes.plans | /plans | Browse available workout plans |
+| AppRoutes.planDetail(planId) | /plans/<planId> | Detail + Start action for specific plan |
+| AppRoutes.workout(sessionId) | /workout/<sessionId> | Active workout session (progress UI) |
+| AppRoutes.sessionSummary(sessionId) | /session/summary/<sessionId> | Post-session metrics & completion summary |
+| AppRoutes.history | /history | (Placeholder) Historical sessions list |
+| AppRoutes.profile | /profile | User profile / settings (placeholder) |
+| AppRoutes.sensors | /sensors | Sensor demo / motion telemetry sandbox |
+
+Notes:
+
+- Dynamic segments (<planId>, <sessionId>) are currently string-based and validated lazily when accessed.
+- Deterministic IDs allow future server reconciliation & shareable links.
+- Migration path: adopt `go_router` for guarded routes + web URL sync.
+
+Deep Link Examples (Future):
+
+```text
+ai-fit://plans/strength_beginner      -> plan detail screen
+ai-fit://workout/plan_push_1726500000 -> resume or summary depending on completion
+```
+
+## 2c. Analytics Hook Points
+
+Instrumentation TODOs placed inline for future analytics layer integration. Each entry identifies the semantic event to emit.
+
+| Location (File:Line approx) | Event Template | Description |
+| --------------------------- | -------------- | ----------- |
+| main.dart: deep link handler | deep_link_open(uri) | App opened or navigated via deep link |
+| plan_detail_screen.dart | plan_start(planId) | User initiated a plan session |
+| session_cubit.dart (startPlanSession) | session_started(workoutId) | New workout session seeded |
+| session_cubit.dart (startExercise) | exercise_start(exerciseId) | Exercise becomes active |
+| session_cubit.dart (completeSet) | set_complete(exerciseId,setIndex) | User completed a set |
+| session_cubit.dart (completeSession) | session_complete(workoutId) | User finished entire session |
+| inividualWorkout.dart (legacy flow) | session_complete(planSession=planId) | Legacy screen session completion |
+| inividualWorkout.dart (legacy flow) | session_complete(legacySession) | Non-plan / legacy completion fallback |
+| Session pause action (SessionCubit.pauseSession) | pause_session(workoutId) | User paused an active session |
+| Session resume action (SessionCubit.resumeSession) | resume_session(workoutId) | User resumed a paused session |
+| Rest start (set completion handler) | rest_started(exerciseId,setIndex) | User entered timed rest after completing a set |
+| Rest skip (Skip Rest button) | rest_skipped(exerciseId,setIndex) | User skipped/short-circuited a rest period |
+| Recovery banner shown (OngoingSessionPanel) | recovery_banner_shown(workoutId,ageSeconds) | Incomplete session detected and surfaced |
+| Recovery banner dismiss (Resume / Dismiss) | recovery_banner_dismissed(workoutId,action) | User resumed or dismissed recovery prompt |
+| Navigation helper start plan | plan_start(planId) | User initiated plan via AppNavigator |
+| Navigation helper start workout | workout_start(workoutId) | Deterministic workout session lifecycle init |
+
+Planned Analytics Layer:
+
+- Thin abstraction (e.g., `Analytics.log(eventName, params)`) with compile-time noop stub when disabled.
+- Consent gate surfaced in profile/settings (persisted preference).
+- Batched dispatch (timers) to minimize network chatter; offline queue in Hive.
+
+Privacy Considerations:
+
+- Avoid raw PII (no names/emails). Use stable anonymous user id.
+- Weight reps/time data treated as optional & purgable upon user delete request.
+- Provide export + delete functions aligned with roadmap.
+
 4. Data & Persistence
 Hive (Session Cache)
 Stores: uid, email, displayName, photoUrl, lastLogin.
@@ -69,6 +174,18 @@ SQLite (Structured)
 user_profile → singleton row for extended fields.
 
 workouts → reserved for logging & analytics.
+
+Workout Sessions (NEW)
+- Hive box: `sessionBox` storing serialized `WorkoutSession` objects (fast lookup for ongoing + last completed).
+- Models: `WorkoutSession` (workoutId, date, durationSeconds, progress[], completed) & `ExerciseProgress` (exerciseId, completedSets, completedReps, usedWeight, timeSpentSeconds).
+- SQLite mirror tables: `workout_sessions`, `exercise_progress` (additive; legacy `workouts` table left untouched) + `exercise_sets` (fine-grained per-set; unique(session_id, exercise_id, set_index)).
+- Repository: `WorkoutSessionRepository` (startSession, updateDuration, upsertExerciseProgress, completeSession, getOngoing, getLastCompleted, addExerciseSet) writes Hive first then mirrors to SQLite best-effort.
+- SessionCubit now wired minimally to home Ongoing Workout panel (reactive duration + resume action).
+- Invariant: Only one ongoing (completed = false) session retained; starting a new session auto-completes any lingering one to avoid drift.
+- Duration ticker: `SessionCubit` runs a 5s periodic timer to increment `durationSeconds` for the ongoing session (best-effort, paused when no session) PLUS reconciliation on refresh (wall-clock recompute) to correct drift.
+- Per-set granularity: `ExerciseSet` model (Hive `exerciseSetBox`, adapter id=12) mirrored into SQLite `exercise_sets` for analytics readiness.
+- Stale session cleanup: sessions older than 8h without completion auto-completed during refresh.
+- Resume navigation: home panel Resume button pushes `Inividualworkout` with `sessionWorkoutId` for contextual continuity.
 
 Lifecycle
 Sign-in → write to Hive + upsert profile row.
@@ -133,6 +250,134 @@ Proprietary (adjust if open-sourcing).
 Add a LICENSE file when finalized.
 
 Maintained as part of the FitSense AI initiative.
+
+---
+ 
+## Workout Interaction Components (New)
+
+This subsection documents the interactive workout/session layer introduced in recent refactors, emphasizing accessibility, deterministic identifiers, and future analytics extensibility.
+
+### 1. ExerciseSetProgress
+
+Purpose: Visual + semantic representation of per-exercise set progression.
+
+Props:
+
+- totalSets (int)
+- completedSets (int) – clamped to totalSets
+- spacing / size (layout tuning)
+- animateActive (bool, default true) – disabled in tests to avoid animation flakiness.
+
+States per chip:
+
+- completed: solid green + check icon + semantics "Set 2 of 5 completed"
+- active: outlined + gentle pulse (AnimationController) + semantics "Set 3 of 5 active"
+- pending: outlined grey + semantics "Set 4 of 5 pending"
+
+Accessibility:
+
+- Root Semantics container announces overall progress.
+- Each chip individually labeled for granular traversal.
+- Animation optional; test harness sets animateActive=false.
+
+### 2. Rest Timer (Ephemeral)
+
+Lifecycle:
+
+1. Triggered when a set completes (except final session completion).
+2. Local state only (Phase 5 will consider persistence / wall-clock reconciliation).
+3. Announces remaining time at 10s intervals + final 5s countdown using SemanticsService.announce.
+
+Events (planned instrumentation): rest_started / rest_skipped.
+
+Rationale: Reduces cognitive load; defers backend modeling until adaptive rest recommendations are introduced.
+
+### 3. Pause Overlay & Recovery Banner
+
+- Pause Overlay (visual layer currently trimmed back) intended to return with a lightweight dialog semantics (scopesRoute: true). Business logic persists in SessionCubit for pause/resume.
+- Recovery Banner (OngoingSessionPanel) surfaces stale / incomplete session with "Resume" action invoking AppNavigator.resumeSession.
+
+Events:
+- pause_session / resume_session
+- recovery_banner_shown / recovery_banner_dismissed
+
+### 4. AppNavigator Helpers
+
+Centralized navigation + lifecycle guardrails around starting or resuming sessions.
+
+Responsibilities:
+
+- Deduplicate concurrent startPlan calls (double-start guard).
+- Ensure lingering incomplete session is completed or resumed deterministically before seeding a new one.
+- Provide semantic wrappers for analytics hooks (plan_start, workout_start) – TODO markers inline.
+
+Benefits:
+
+- Reduces navigation scattering (previous raw Navigator.push usage inside UI widgets).
+- Provides a single interception point for future deep-link + permission checks.
+
+### 5. State Diagram (Workout Session Flow)
+
+```text
+   ┌────────┐     startExercise       ┌────────────┐     completeSet (not last)   ┌───────────┐
+   │ ready  │ ──────────────────────▶ │ exercising │ ───────────────────────────▶ │  resting  │
+   └────────┘                         └─────┬──────┘                              └─────┬─────┘
+  ▲         resumeSession              │ completeSet (last set of exercise)       │ rest timer ends / skip
+  │                                     │                                         │
+  │                                     ▼                                         │
+  │                               (advance exercise)                              │
+  │                                     │                                         │
+  │                                     ▼                                         │
+  │                                 exercising (next) ◀────────────────────────────┘
+  │                                     │
+  │  pauseSession                      │ completeSession (final exercise complete)
+  │                                     ▼
+  ├──────────────────────────────▶ paused
+  │                                 │
+  │  resumeSession                   ▼
+  └──────────────────────────────  exercising → complete (summary screen)
+```
+
+Notes:
+
+- resting state is ephemeral; not persisted yet.
+- paused state lives in SessionRuntime (persisted partial metadata) enabling recovery after app kill.
+- All transitions funnel through SessionCubit to maintain invariants.
+
+### 6. General Integration Notes
+
+State/Data Contracts:
+
+- SessionCubit additions prefer optional fields + helper methods (non-breaking) over structural rewrites.
+- Rest period not persisted; only mode and core progress retained.
+
+Performance:
+
+- One periodic rest timer per active workout screen (cheap).
+- ExerciseSetProgress is O(n) small (n = # sets) and stable.
+- Session summary renders once post-completion (acceptable to do aggregation in build).
+
+Error Handling:
+
+- Plan exercise name resolution wrapped with safe fallback to generic labels if plan entry missing.
+- Semantics announcements are best-effort; failures are non-fatal.
+
+
+### 7. Analytics TODO Markers Recap
+
+Inline TODOs for: plan_start, workout_start, pause_session, resume_session, rest_started, rest_skipped, recovery_banner_shown, recovery_banner_dismissed.
+
+### 8. Minimal Guardrails
+
+- Double start guard: disable Start Plan button while async startPlanSession runs (AppNavigator responsibility; TODO marker).
+- Pause idempotency: ignore pause if already paused; ignore resume if not paused.
+- Recovery banner only appears when exactly one incomplete session exists.
+
+### 9. Future Persistence Considerations (Phase 5)
+
+- Persist rest start timestamp + intended duration for drift-safe background resume.
+- Record per-set rest actual duration for adaptive recommendations.
+- Integrate motion-based auto-pause (no reps & no movement).
 
 ---
 <details>

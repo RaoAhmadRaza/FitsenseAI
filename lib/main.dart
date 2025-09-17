@@ -11,9 +11,24 @@ import 'features/presentation/widgets/colors.dart';
 import 'app.dart';
 import 'logic/auth_bloc/auth_bloc.dart';
 import 'logic/auth_bloc/auth_event.dart';
+import 'logic/auth_bloc/auth_state.dart';
 import 'features/auth/data/repositories/auth_repository.dart';
 import 'core/db/app_database.dart'; // SQLite layer
 import 'features/debug/sensor_demo_page.dart';
+import 'features/workout/data/workout_session_repository.dart';
+import 'core/models/workout_session.dart'; // WorkoutSession + ExerciseProgress Hive models
+import 'core/models/exercise_set.dart';
+import 'logic/session/session_cubit.dart';
+import 'core/models/workout_plan.dart';
+import 'core/models/session_runtime.dart';
+import 'features/workout/data/workout_plan_repository.dart';
+import 'logic/workouts/workouts_cubit.dart';
+import 'features/home/pages/plan_browser_placeholder.dart';
+import 'features/home/pages/plan_detail_screen.dart';
+import 'features/home/pages/history_placeholder.dart';
+import 'features/auth/presentation/pages/inividualWorkout.dart';
+import 'core/navigation/app_routes.dart';
+import 'features/workout/pages/session_summary_screen.dart';
 
 // Global user info (populated after sign-in)
 String? gUserUid;
@@ -38,6 +53,33 @@ void main() async {
   // Open (or create) a Hive box for user profile caching
   await Hive.openBox('userBox');
 
+  // Register workout session adapters (idempotent guard) & open session box.
+  if (!Hive.isAdapterRegistered(10)) {
+    Hive.registerAdapter(ExerciseProgressAdapter());
+  }
+  if (!Hive.isAdapterRegistered(11)) {
+    Hive.registerAdapter(WorkoutSessionAdapter());
+  }
+  if (!Hive.isAdapterRegistered(12)) {
+    Hive.registerAdapter(ExerciseSetAdapter());
+  }
+  if (!Hive.isAdapterRegistered(13)) {
+    Hive.registerAdapter(PlanExerciseAdapter());
+  }
+  if (!Hive.isAdapterRegistered(14)) {
+    Hive.registerAdapter(WorkoutPlanAdapter());
+  }
+  if (!Hive.isAdapterRegistered(15)) {
+    Hive.registerAdapter(SessionRuntimeAdapter());
+  }
+  // Box holds serialized WorkoutSession objects; fast path for ongoing/last sessions.
+  await Hive.openBox<WorkoutSession>('sessionBox');
+  // Separate box for granular per-set tracking (optional layer).
+  await Hive.openBox<ExerciseSet>('exerciseSetBox');
+  // Box for workout plan templates (re-usable definitions, not active sessions)
+  await Hive.openBox<WorkoutPlan>('workoutPlanBox');
+  await Hive.openBox<SessionRuntime>('sessionRuntimeBox');
+
   // Initialize SQLite and attempt to hydrate extended profile into globals.
   try {
     await AppDatabase.instance();
@@ -47,20 +89,76 @@ void main() async {
   }
 
   runApp(
-    RepositoryProvider(
-      create: (_) => AuthRepository(),
-      child: BlocProvider(
-        create: (context) =>
-            AuthBloc(authRepository: context.read<AuthRepository>())
-              ..add(const AuthStarted()),
+    MultiRepositoryProvider(
+      providers: [
+        RepositoryProvider<AuthRepository>(create: (_) => AuthRepository()),
+        RepositoryProvider<WorkoutSessionRepository>(
+          create: (_) => WorkoutSessionRepository(),
+        ),
+        RepositoryProvider<WorkoutPlanRepository>(
+          create: (_) => WorkoutPlanRepository(),
+        ),
+      ],
+      child: MultiBlocProvider(
+        providers: [
+          BlocProvider<AuthBloc>(
+            create: (context) =>
+                AuthBloc(authRepository: context.read<AuthRepository>())
+                  ..add(const AuthStarted()),
+          ),
+          BlocProvider<SessionCubit>(
+            create: (context) =>
+                SessionCubit(context.read<WorkoutSessionRepository>())
+                  ..refresh(),
+          ),
+          BlocProvider<WorkoutsCubit>(
+            create: (context) =>
+                WorkoutsCubit(context.read<WorkoutPlanRepository>())..load(),
+          ),
+        ],
         child: const _RootApp(),
       ),
     ),
   );
 }
 
-class _RootApp extends StatelessWidget {
+class _RootApp extends StatefulWidget {
   const _RootApp();
+
+  @override
+  State<_RootApp> createState() => _RootAppState();
+}
+
+class _RootAppState extends State<_RootApp> {
+  @override
+  void initState() {
+    super.initState();
+    _initDeepLinks();
+  }
+
+  Future<void> _initDeepLinks() async {
+    // TODO: Implement real deep link listener (e.g., using uni_links).
+    // Placeholder: In future, parse initial uri and any stream events.
+    // Example mapping: ai-fit://plans/<id> -> pushNamed(AppRoutes.planDetail(<id>))
+    // final initialUri = await getInitialUri();
+    // if (initialUri != null) _handleUri(initialUri);
+  }
+
+  void _handleUri(Uri uri) {
+    // Basic pattern match for ai-fit scheme.
+    if (uri.scheme == 'ai-fit') {
+      if (uri.host == 'plans' && uri.pathSegments.isNotEmpty) {
+        final planId = uri.pathSegments.first;
+        // Delay push until after first frame to ensure navigator is ready.
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            Navigator.of(context).pushNamed(AppRoutes.planDetail(planId));
+          }
+        });
+      }
+    }
+    // TODO: analytics: deep_link_open(uri.toString())
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -93,13 +191,80 @@ class _RootApp extends StatelessWidget {
         ),
         colorScheme: scheme,
       ),
-      initialRoute: '/',
+      // Declarative root selection based on auth + profile completion.
+      home: BlocBuilder<AuthBloc, AuthState>(
+        builder: (context, state) {
+          // Fast synchronous read; box already opened in main().
+          final box = Hive.box('userBox');
+          final profileComplete = box.get('profileComplete') == true;
+
+          // Authenticated user path
+          if (state is AuthAuthenticated) {
+            if (profileComplete) {
+              return const MyHomePage(title: 'AI Fitness Tracker');
+            } else {
+              // Still need to finish onboarding/profile – keep them in welcome flow.
+              return const WelcomeScreen();
+            }
+          }
+
+          if (state is AuthLoading) {
+            return const _SplashScreen();
+          }
+
+          // Unauthenticated (or initial) -> Welcome
+          return const WelcomeScreen();
+        },
+      ),
       routes: {
-        '/': (_) => const WelcomeScreen(), // login screen
-        '/home': (_) => const MyHomePage(title: 'AI Fitness Tracker'),
-        '/profile': (_) => const ProfilePage(),
-        '/sensors': (_) => const SensorDemoPage(),
+        AppRoutes.home: (_) => const MyHomePage(title: 'AI Fitness Tracker'),
+        AppRoutes.profile: (_) => const ProfilePage(),
+        AppRoutes.sensors: (_) => const SensorDemoPage(),
+        AppRoutes.plans: (_) => const PlanBrowserScreen(),
+        AppRoutes.history: (_) => const HistoryPlaceholder(),
       },
+      onGenerateRoute: (settings) {
+        final name = settings.name ?? '';
+        final planDetail = RegExp(r'^/plans/([^/]+)$').firstMatch(name);
+        if (planDetail != null) {
+          final planId = planDetail.group(1)!;
+          return MaterialPageRoute(
+            settings: settings,
+            builder: (_) => PlanDetailScreen(planId: planId),
+          );
+        }
+        final workout = RegExp(r'^/workout/([^/]+)$').firstMatch(name);
+        if (workout != null) {
+          final sessionId = workout.group(1)!;
+          return MaterialPageRoute(
+            settings: settings,
+            builder: (_) => Inividualworkout(sessionWorkoutId: sessionId),
+          );
+        }
+        final summary = RegExp(r'^/session/summary/([^/]+)$').firstMatch(name);
+        if (summary != null) {
+          final sessionId = summary.group(1)!;
+          return MaterialPageRoute(
+            settings: settings,
+            builder: (_) => SessionSummaryScreen(sessionId: sessionId),
+          );
+        }
+        return null; // default fallthrough
+      },
+    );
+  }
+}
+
+/// Simple splash/loading placeholder for auth transitions.
+class _SplashScreen extends StatelessWidget {
+  const _SplashScreen();
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      backgroundColor: Colors.white,
+      body: Center(
+        child: CircularProgressIndicator(color: AppColors.vibrantRed),
+      ),
     );
   }
 }

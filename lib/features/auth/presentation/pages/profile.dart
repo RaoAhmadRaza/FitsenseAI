@@ -406,6 +406,14 @@ class _ProfilePageState extends State<ProfilePage> {
                                 onPressed: () {
                                   HapticFeedback.mediumImpact();
                                   _persistProfile();
+                                  // Mark profile as complete for declarative routing.
+                                  try {
+                                    if (Hive.isBoxOpen('userBox')) {
+                                      Hive.box(
+                                        'userBox',
+                                      ).put('profileComplete', true);
+                                    }
+                                  } catch (_) {}
                                   // Navigate to home screen (defined in main routes as '/home')
                                   if (mounted) {
                                     Navigator.of(
