@@ -236,12 +236,18 @@ class AppDatabase {
   }
 
   /// Clear profile (used on sign-out) from both SQLite and globals optionally.
-  static Future<void> clearUserProfile({bool resetGlobals = false}) async {
-    final db = await instance();
-    try {
-      await db.delete(tableUserProfile, where: 'id = 1');
-    } catch (e, st) {
-      logError('DB clearUserProfile failed: $e', st);
+  static Future<void> clearUserProfile({
+    bool resetGlobals = false,
+    bool deleteFromDb = true,
+  }) async {
+    // Optionally keep the local DB row on sign-out so onboarding remains complete.
+    if (deleteFromDb) {
+      final db = await instance();
+      try {
+        await db.delete(tableUserProfile, where: 'id = 1');
+      } catch (e, st) {
+        logError('DB clearUserProfile failed: $e', st);
+      }
     }
     if (resetGlobals) {
       globals.gUserDisplayName = null;

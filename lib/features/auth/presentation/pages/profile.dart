@@ -20,6 +20,7 @@ import 'package:horizontal_slider/src/horizontal_slider.dart';
 import 'package:animated_weight_picker/animated_weight_picker.dart';
 import 'package:msh_checkbox/msh_checkbox.dart';
 import 'package:wheel_chooser/wheel_chooser.dart';
+import '../../../../core/db/app_database.dart';
 
 enum Gender { male, female }
 
@@ -50,7 +51,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
   DateTime _lastPersist = DateTime.fromMillisecondsSinceEpoch(0);
 
-  void _persistProfile({bool debounce = false}) {
+  Future<void> _persistProfile({bool debounce = false}) async {
     final now = DateTime.now();
     if (debounce && now.difference(_lastPersist).inMilliseconds < 500) return;
     _lastPersist = now;
@@ -64,7 +65,7 @@ class _ProfilePageState extends State<ProfilePage> {
     gUserGender = _gender == Gender.female ? 'female' : 'male';
     gUserGoals = _goals;
     final box = Hive.box('userBox');
-    box.put('profile', {
+    await box.put('profile', {
       'name': gUserDisplayName,
       'age': gUserAge,
       'weightKg': gUserWeightKg,
@@ -74,6 +75,10 @@ class _ProfilePageState extends State<ProfilePage> {
       'goals': gUserGoals.toList(),
       'updatedAt': now.toIso8601String(),
     });
+    // Persist to SQLite so startup rehydrates correctly after hot restart
+    try {
+      await AppDatabase.saveUserProfileFromGlobals();
+    } catch (_) {}
   }
 
   @override
@@ -403,15 +408,21 @@ class _ProfilePageState extends State<ProfilePage> {
                             child: SizedBox(
                               width: double.infinity,
                               child: ElevatedButton(
-                                onPressed: () {
+                                onPressed: () async {
                                   HapticFeedback.mediumImpact();
                                   _persistProfile();
                                   // Mark profile as complete for declarative routing.
                                   try {
                                     if (Hive.isBoxOpen('userBox')) {
-                                      Hive.box(
-                                        'userBox',
-                                      ).put('profileComplete', true);
+                                      final box = Hive.box('userBox');
+                                      final uid = box.get('uid');
+                                      await box.put('profileComplete', true);
+                                      if (uid != null) {
+                                        await box.put(
+                                          'profileCompleteUid',
+                                          uid,
+                                        );
+                                      }
                                     }
                                   } catch (_) {}
                                   // Navigate to home screen (defined in main routes as '/home')

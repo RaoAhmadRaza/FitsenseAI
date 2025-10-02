@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../../../../main.dart';
 
 import '../../../presentation/widgets/colors.dart';
 import 'inividualWorkout.dart';

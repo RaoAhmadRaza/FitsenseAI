@@ -84,6 +84,30 @@ void main() async {
   try {
     await AppDatabase.instance();
     await AppDatabase.loadUserProfileIntoGlobals();
+    // Migration safeguard: if SQLite has no profile yet but Hive does,
+    // load from Hive into globals and persist to SQLite so future restarts rehydrate.
+    if (gUserDisplayName == null &&
+        gUserAge == null &&
+        gUserWeightKg == null &&
+        gUserHeightCm == null &&
+        Hive.isBoxOpen('userBox')) {
+      final box = Hive.box('userBox');
+      final data = box.get('profile');
+      if (data is Map && data.isNotEmpty) {
+        gUserDisplayName = (data['name'] as String?) ?? gUserDisplayName;
+        gUserAge = data['age'] as int? ?? gUserAge;
+        gUserWeightKg = (data['weightKg'] as num?)?.toDouble() ?? gUserWeightKg;
+        gUserHeightCm = (data['heightCm'] as num?)?.toDouble() ?? gUserHeightCm;
+        gUserHeightUnit = (data['heightUnit'] as String?) ?? gUserHeightUnit;
+        gUserGender = (data['gender'] as String?) ?? gUserGender;
+        final goalsList = (data['goals'] as List?)?.cast<String>() ?? const [];
+        gUserGoals = goalsList.toSet();
+        // Persist this hydrated profile to SQLite for durability across restarts
+        try {
+          await AppDatabase.saveUserProfileFromGlobals();
+        } catch (_) {}
+      }
+    }
   } catch (e) {
     // Silently ignore DB init errors for now; could log or report in future.
   }
@@ -144,6 +168,7 @@ class _RootAppState extends State<_RootApp> {
     // if (initialUri != null) _handleUri(initialUri);
   }
 
+  // ignore: unused_element
   void _handleUri(Uri uri) {
     // Basic pattern match for ai-fit scheme.
     if (uri.scheme == 'ai-fit') {
@@ -196,10 +221,15 @@ class _RootAppState extends State<_RootApp> {
         builder: (context, state) {
           // Fast synchronous read; box already opened in main().
           final box = Hive.box('userBox');
-          final profileComplete = box.get('profileComplete') == true;
+          final pc = box.get('profileComplete') == true;
+          final pcUid = box.get('profileCompleteUid');
 
           // Authenticated user path
           if (state is AuthAuthenticated) {
+            final currentUid = state.user.uid;
+            // Consider profile complete only when flag is true and bound to this uid (or legacy unset)
+            final profileComplete =
+                pc && (pcUid == null || pcUid == currentUid);
             if (profileComplete) {
               return const MyHomePage(title: 'AI Fitness Tracker');
             } else {

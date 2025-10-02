@@ -3,7 +3,6 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../logic/workouts/workouts_cubit.dart';
 import '../../../core/models/workout_plan.dart';
 import '../../presentation/widgets/colors.dart';
-import 'plan_detail_screen.dart';
 
 // Real Plan Browser implementation replacing placeholder.
 class PlanBrowserScreen extends StatefulWidget {

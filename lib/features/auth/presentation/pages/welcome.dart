@@ -33,17 +33,18 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
     super.initState();
     try {
       final current = FirebaseAuth.instance.currentUser;
-      if (current != null && Hive.isBoxOpen('userBox')) {
-        final box = Hive.box('userBox');
-        final cachedUid = box.get('uid');
-        if (cachedUid != null && cachedUid == current.uid) {
-          gUserUid = cachedUid;
-          gUserEmail = box.get('email');
-          gUserDisplayName = box.get('displayName');
-          gUserPhotoUrl = box.get('photoUrl');
-          _stage = _Stage.greeting;
-          _restored = true;
+      if (current != null) {
+        // User is already authenticated; show greeting immediately.
+        // Best-effort: hydrate identity from Hive if available.
+        if (Hive.isBoxOpen('userBox')) {
+          final box = Hive.box('userBox');
+          gUserUid = box.get('uid') ?? current.uid;
+          gUserEmail = box.get('email') ?? current.email;
+          gUserDisplayName = box.get('displayName') ?? current.displayName;
+          gUserPhotoUrl = box.get('photoUrl') ?? current.photoURL;
         }
+        _stage = _Stage.greeting;
+        _restored = true;
       }
     } catch (_) {}
   }
@@ -80,6 +81,21 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
     setState(() {
       _stage = _Stage.greeting;
     });
+
+    // Optional: fast path navigation to avoid one-frame bounce
+    try {
+      final box = Hive.box('userBox');
+      final pc = box.get('profileComplete') == true;
+      final pcUid = box.get('profileCompleteUid');
+      final currentUid = user.uid;
+      final profileComplete = pc && (pcUid == null || pcUid == currentUid);
+      if (profileComplete) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          Navigator.of(context).pushNamedAndRemoveUntil('/home', (r) => false);
+        });
+      }
+    } catch (_) {}
   }
 
   @override
@@ -92,12 +108,16 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
           ScaffoldMessenger.of(
             context,
           ).showSnackBar(SnackBar(content: Text(state.message)));
+        } else if (state is AuthUnauthenticated) {
+          if (mounted) {
+            setState(() {
+              _stage = _Stage.landing;
+              _restored = false;
+            });
+          }
         }
       },
       builder: (context, state) {
-        if (state is AuthUnauthenticated && (_stage == _Stage.greeting)) {
-          _stage = _Stage.landing;
-        }
         final isLoading = state is AuthLoading;
 
         return Scaffold(

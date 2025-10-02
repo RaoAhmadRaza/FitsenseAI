@@ -99,11 +99,26 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     try {
       await _authRepository.signOut();
       try {
-        // Clear persisted profile (SQLite + Hive cache)
-        await AppDatabase.clearUserProfile(resetGlobals: true);
+        // Clear in-memory globals, keep SQLite row by default to preserve onboarding.
+        await AppDatabase.clearUserProfile(
+          resetGlobals: true,
+          deleteFromDb: false,
+        );
         if (Hive.isBoxOpen('userBox')) {
           final box = Hive.box('userBox');
-          await box.clear(); // removes profileComplete and profile cache
+          // Preserve 'profileComplete' so the app can skip welcome after re-login.
+          final wasComplete = box.get('profileComplete') == true;
+          await box.deleteAll([
+            'uid',
+            'email',
+            'displayName',
+            'photoUrl',
+            'lastLogin',
+            'profile',
+          ]);
+          if (wasComplete) {
+            await box.put('profileComplete', true);
+          }
         }
         logInfo('Profile data cleared on sign-out');
       } catch (e, st) {

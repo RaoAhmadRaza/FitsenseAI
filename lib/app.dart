@@ -588,64 +588,64 @@ class _LastCompletedCard extends StatelessWidget {
           label:
               'Last workout on $dateStr, duration $duration, $totalSets sets across ${last.progress.length} exercises',
           child: Container(
-          width: 370,
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: Colors.grey.shade300),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Last Workout',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      fontFamily: 'Sora',
-                      color: Colors.black,
+            width: 370,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: Colors.grey.shade300),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Last Workout',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        fontFamily: 'Sora',
+                        color: Colors.black,
+                      ),
                     ),
-                  ),
-                  Text(
-                    dateStr,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontFamily: 'Sora',
-                      color: Colors.grey,
+                    Text(
+                      dateStr,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontFamily: 'Sora',
+                        color: Colors.grey,
+                      ),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  _metricBlock(label: 'Duration', value: duration),
-                  const SizedBox(width: 16),
-                  _metricBlock(label: 'Sets', value: '$totalSets'),
-                  const SizedBox(width: 16),
-                  _metricBlock(
-                    label: 'Exercises',
-                    value: '${last.progress.length}',
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton(
-                  onPressed: () {
-                    AppNavigator.sessionSummary(context, last.workoutId);
-                  },
-                  child: const Text('View Summary'),
+                  ],
                 ),
-              ),
-            ],
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    _metricBlock(label: 'Duration', value: duration),
+                    const SizedBox(width: 16),
+                    _metricBlock(label: 'Sets', value: '$totalSets'),
+                    const SizedBox(width: 16),
+                    _metricBlock(
+                      label: 'Exercises',
+                      value: '${last.progress.length}',
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: () {
+                      AppNavigator.sessionSummary(context, last.workoutId);
+                    },
+                    child: const Text('View Summary'),
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
         );
       },
     );
