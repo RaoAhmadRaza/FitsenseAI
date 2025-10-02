@@ -265,45 +265,7 @@ class _ProfileSettingsState extends State<ProfileSettings> {
                 endIndent: 30,
               ),
 
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      SizedBox(height: 20),
-                      Text(
-                        'Meal Plans',
-                        style: TextStyle(
-                          fontSize: 23,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.black,
-                        ),
-                      ),
-                      SizedBox(height: 10),
-                      Text(
-                        'Check your meal plan history and stats',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey.shade700,
-                        ),
-                      ),
-                    ],
-                  ),
-                  SizedBox(width: 40),
-                  Padding(
-                    padding: const EdgeInsets.only(top: 40.0, left: 40),
-                    child: IconButton(
-                      icon: Icon(
-                        Icons.arrow_forward_ios,
-                        color: Colors.grey.shade800,
-                        size: 20,
-                      ),
-                      onPressed: () {},
-                    ),
-                  ),
-                ],
-              ),
+              // TODO: REMOVED_MEALS — Meal Plans section removed
               SizedBox(height: 30),
               TextButton(
                 onPressed: () {},

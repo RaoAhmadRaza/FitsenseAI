@@ -8,7 +8,6 @@ import 'logic/workouts/workouts_cubit.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'features/presentation/widgets/colors.dart';
 import 'features/auth/presentation/pages/workouts.dart';
-import 'features/auth/presentation/pages/meals.dart';
 import 'features/auth/presentation/pages/profileSettings.dart';
 import 'logic/auth_bloc/auth_bloc.dart';
 import 'logic/auth_bloc/auth_state.dart';
@@ -131,7 +130,6 @@ class _MyHomePageState extends State<MyHomePage> {
           children: const [
             _HomeTab(),
             WorkoutsPage(),
-            MealsPage(),
             ProfileSettings(),
           ],
         ),
@@ -176,14 +174,6 @@ class _MyHomePageState extends State<MyHomePage> {
               ),
               activeItem: Icon(Icons.fitness_center, color: Colors.white),
               itemLabel: 'Workouts',
-            ),
-            BottomBarItem(
-              inActiveItem: Icon(
-                Icons.restaurant,
-                color: CupertinoColors.black,
-              ),
-              activeItem: Icon(Icons.restaurant, color: Colors.white),
-              itemLabel: 'Meals',
             ),
             BottomBarItem(
               inActiveItem: Icon(Icons.person, color: CupertinoColors.black),
