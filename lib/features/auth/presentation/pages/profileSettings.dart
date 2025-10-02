@@ -4,8 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:icons_plus/icons_plus.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import '../../../../core/models/workout_session.dart';
 import '../../../../logic/auth_bloc/auth_bloc.dart';
 import '../../../../logic/auth_bloc/auth_event.dart';
+import '../../../../core/navigation/app_routes.dart';
 import '../../../../main.dart'
     show
         gUserDisplayName,
@@ -29,6 +32,38 @@ class ProfileSettings extends StatefulWidget {
 }
 
 class _ProfileSettingsState extends State<ProfileSettings> {
+  // Compute active streak (consecutive days up to today), total minutes and completed count
+  int _computeStreak(Iterable<WorkoutSession> sessions) {
+    final completedDates = sessions
+        .where((s) => s.completed)
+        .map((s) => DateTime(s.date.year, s.date.month, s.date.day))
+        .toSet();
+    int streak = 0;
+    DateTime cursor = DateTime.now();
+    DateTime curDay = DateTime(cursor.year, cursor.month, cursor.day);
+    while (completedDates.contains(curDay)) {
+      streak += 1;
+      curDay = curDay.subtract(const Duration(days: 1));
+    }
+    return streak;
+  }
+
+  int _computeCompletedCount(Iterable<WorkoutSession> sessions) =>
+      sessions.where((s) => s.completed).length;
+
+  int _computeTotalSeconds(Iterable<WorkoutSession> sessions) => sessions
+      .where((s) => s.completed)
+      .fold<int>(0, (sum, s) => sum + s.durationSeconds);
+
+  String _formatHM(int seconds) {
+    if (seconds <= 0) return '0M';
+    final h = seconds ~/ 3600;
+    final m = (seconds % 3600) ~/ 60;
+    if (h > 0 && m > 0) return '${h}H ${m}M';
+    if (h > 0) return '${h}H';
+    return '${m}M';
+  }
+
   @override
   void initState() {
     super.initState();
@@ -66,109 +101,119 @@ class _ProfileSettingsState extends State<ProfileSettings> {
                 ),
               ),
               SizedBox(height: 20),
-              IntrinsicHeight(
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Column(
+              // Stats from local backend (Hive sessionBox)
+              ValueListenableBuilder<Box<WorkoutSession>>(
+                valueListenable:
+                    Hive.box<WorkoutSession>('sessionBox').listenable(),
+                builder: (context, box, _) {
+                  final sessions = box.values.toList(growable: false);
+                  final streak = _computeStreak(sessions);
+                  final totalSec = _computeTotalSeconds(sessions);
+                  final completed = _computeCompletedCount(sessions);
+                  return IntrinsicHeight(
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(
-                          AntDesign.fire_fill,
-                          color: AppColors.energyOrange,
-                          size: 30,
+                        Column(
+                          children: [
+                            Icon(
+                              AntDesign.fire_fill,
+                              color: AppColors.energyOrange,
+                              size: 30,
+                            ),
+                            SizedBox(height: 20),
+                            Text(
+                              '$streak',
+                              style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.black,
+                              ),
+                            ),
+                            SizedBox(height: 10),
+                            Text(
+                              ' Active \nStreaks',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey.shade700,
+                              ),
+                            ),
+                          ],
                         ),
-                        SizedBox(height: 20),
-                        Text(
-                          '12',
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.black,
-                          ),
+                        SizedBox(width: 10),
+                        VerticalDivider(
+                          color: Colors.grey.shade300,
+                          thickness: 2.8,
+                          indent: 10,
+                          endIndent: 10,
+                          width: 20,
                         ),
-                        SizedBox(height: 10),
-                        Text(
-                          ' Active \nStreaks',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey.shade700,
-                          ),
+                        SizedBox(width: 10),
+                        Column(
+                          children: [
+                            Icon(
+                              AntDesign.clock_circle_fill,
+                              color: AppColors.vibrantRed,
+                              size: 30,
+                            ),
+                            SizedBox(height: 20),
+                            Text(
+                              _formatHM(totalSec),
+                              style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.black,
+                              ),
+                            ),
+                            SizedBox(height: 10),
+                            Text(
+                              'Workout \n Minutes',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey.shade700,
+                              ),
+                            ),
+                          ],
+                        ),
+                        SizedBox(width: 10),
+                        VerticalDivider(
+                          color: Colors.grey.shade300,
+                          thickness: 2.8,
+                          indent: 10,
+                          endIndent: 10,
+                          width: 20,
+                        ),
+                        SizedBox(width: 10),
+                        Column(
+                          children: [
+                            const Icon(
+                              FontAwesomeIcons.dumbbell,
+                              color: Colors.purpleAccent,
+                              size: 30,
+                            ),
+                            SizedBox(height: 20),
+                            Text(
+                              '$completed',
+                              style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.black,
+                              ),
+                            ),
+                            SizedBox(height: 10),
+                            Text(
+                              'Completed \n Workouts',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey.shade700,
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
-                    SizedBox(width: 10),
-                    VerticalDivider(
-                      color: Colors.grey.shade300,
-                      thickness: 2.8,
-                      indent: 10,
-                      endIndent: 10,
-                      width: 20,
-                    ),
-                    SizedBox(width: 10),
-                    Column(
-                      children: [
-                        Icon(
-                          AntDesign.clock_circle_fill,
-                          color: AppColors.vibrantRed,
-                          size: 30,
-                        ),
-                        SizedBox(height: 20),
-                        Text(
-                          '1H 20M',
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.black,
-                          ),
-                        ),
-                        SizedBox(height: 10),
-                        Text(
-                          'Workout \n Minuets',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey.shade700,
-                          ),
-                        ),
-                      ],
-                    ),
-                    SizedBox(width: 10),
-
-                    VerticalDivider(
-                      color: Colors.grey.shade300,
-                      thickness: 2.8,
-                      indent: 10,
-                      endIndent: 10,
-                      width: 20,
-                    ),
-                    SizedBox(width: 10),
-                    Column(
-                      children: [
-                        Icon(
-                          FontAwesomeIcons.dumbbell,
-                          color: Colors.purpleAccent,
-                          size: 30,
-                        ),
-                        SizedBox(height: 20),
-                        Text(
-                          '28',
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.black,
-                          ),
-                        ),
-                        SizedBox(height: 10),
-                        Text(
-                          'Completed \n Workouts',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey.shade700,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
+                  );
+                },
               ),
 
               Row(
@@ -205,7 +250,9 @@ class _ProfileSettingsState extends State<ProfileSettings> {
                         color: Colors.grey.shade800,
                         size: 20,
                       ),
-                      onPressed: () {},
+                      onPressed: () {
+                        Navigator.of(context).pushNamed(AppRoutes.profile);
+                      },
                     ),
                   ),
                 ],
@@ -252,7 +299,9 @@ class _ProfileSettingsState extends State<ProfileSettings> {
                         color: Colors.grey.shade800,
                         size: 20,
                       ),
-                      onPressed: () {},
+                      onPressed: () {
+                        Navigator.of(context).pushNamed(AppRoutes.history);
+                      },
                     ),
                   ),
                 ],
@@ -268,7 +317,9 @@ class _ProfileSettingsState extends State<ProfileSettings> {
               // TODO: REMOVED_MEALS — Meal Plans section removed
               SizedBox(height: 30),
               TextButton(
-                onPressed: () {},
+                onPressed: () {
+                  context.read<AuthBloc>().add(const AuthSignOutRequested());
+                },
                 child: Text(
                   'Log Out',
                   style: TextStyle(

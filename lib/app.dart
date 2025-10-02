@@ -127,11 +127,7 @@ class _MyHomePageState extends State<MyHomePage> {
               _controller.jumpTo(index);
             }
           },
-          children: const [
-            _HomeTab(),
-            WorkoutsPage(),
-            ProfileSettings(),
-          ],
+          children: const [_HomeTab(), WorkoutsPage(), ProfileSettings()],
         ),
         bottomNavigationBar: AnimatedNotchBottomBar(
           notchBottomBarController: _controller,
@@ -143,7 +139,8 @@ class _MyHomePageState extends State<MyHomePage> {
           kBottomRadius: 29.0,
           notchColor: AppColors.vibrantRed,
           removeMargins: false,
-          bottomBarWidth: 500,
+          // Reduced width for a more compact bottom nav bar
+          bottomBarWidth: 300,
           showShadow: true,
           durationInMilliSeconds: 320,
           itemLabelStyle: const TextStyle(
