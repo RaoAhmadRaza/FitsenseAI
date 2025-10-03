@@ -1,0 +1,22 @@
+rules:
+  - id: dart-no-hardcoded-credentials
+    patterns:
+      - pattern-either:
+          - pattern: "password = $X"
+          - pattern: "api_secret = $X"
+          - pattern: "secretKey = $X"
+    message: "Possible hardcoded credential."
+    severity: WARNING
+    languages: [generic]
+
+  - id: dart-http-insecure
+    pattern: "http://$HOST/$REST"
+    message: "Insecure HTTP URL detected. Prefer HTTPS."
+    severity: WARNING
+    languages: [generic]
+
+  - id: flutter-debug-prints
+    pattern: "print($X)"
+    message: "Avoid debug prints in production; use structured logging."
+    severity: INFO
+    languages: [dart]

@@ -6,7 +6,6 @@ import 'package:ai_fitness_tracker/core/models/exercise_set.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:hive/hive.dart';
 import 'dart:io';
-import 'package:path/path.dart' as p;
 import 'package:ai_fitness_tracker/core/models/session_runtime.dart';
 
 class MockWorkoutSessionRepository extends Mock

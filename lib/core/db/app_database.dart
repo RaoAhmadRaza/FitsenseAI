@@ -37,6 +37,7 @@ class AppDatabase {
   static const tableWorkoutPlans = 'workout_plans';
   static const tableWorkoutPlanExercises = 'workout_plan_exercises';
   static const tableWorkoutPlanEquipment = 'workout_plan_equipment';
+  static const tableMeals = 'meals';
 
   static Database? _instance;
 
@@ -135,6 +136,17 @@ class AppDatabase {
       );
     ''');
 
+    await db.execute('''
+      CREATE TABLE $tableMeals (
+        id TEXT PRIMARY KEY,
+        date TEXT NOT NULL,
+        name TEXT NOT NULL,
+        calories INTEGER NOT NULL,
+        protein_g INTEGER NOT NULL,
+        carbs_g INTEGER NOT NULL,
+        fat_g INTEGER NOT NULL
+      );
+    ''');
     // v2 tables (included on fresh install)
     await _createWorkoutPlanTables(db);
   }
@@ -410,6 +422,22 @@ extension WorkoutSessionSqlHelpers on AppDatabase {
     final rows = await db.query(
       AppDatabase.tableWorkoutSessions,
       where: 'completed = 0',
+      orderBy: 'date DESC',
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return rows.first;
+  }
+
+  /// Resolve a session row by its workoutId (latest by date if duplicates exist).
+  static Future<Map<String, Object?>?> getSessionRowByWorkoutId(
+    String workoutId,
+  ) async {
+    final db = await AppDatabase.instance();
+    final rows = await db.query(
+      AppDatabase.tableWorkoutSessions,
+      where: 'workout_id = ?',
+      whereArgs: [workoutId],
       orderBy: 'date DESC',
       limit: 1,
     );

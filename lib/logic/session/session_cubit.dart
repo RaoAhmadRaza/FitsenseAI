@@ -51,17 +51,31 @@ class SessionCubit extends Cubit<SessionState> {
   Box<SessionRuntime> get _runtimeBox =>
       Hive.box<SessionRuntime>('sessionRuntimeBox');
 
+  // Live duration exposure for UI:
+  // - liveOngoingSeconds: current seconds for the ongoing session (null if none)
+  // - liveOngoingSecondsStream: emits when ongoing duration changes; pauses naturally when session is paused
+  // - liveOngoingMinutesStream: minutes version (floor)
+  int? get liveOngoingSeconds => state.ongoing?.durationSeconds;
+  Stream<int?> get liveOngoingSecondsStream =>
+      stream.map((s) => s.ongoing?.durationSeconds).distinct();
+  Stream<int> get liveOngoingMinutesStream => stream
+      .map((s) => s.ongoing?.durationSeconds ?? 0)
+      .map((sec) => sec ~/ 60)
+      .distinct();
+
   Future<SessionRuntime> _upsertRuntime(
     WorkoutSession session, {
     int? currentExerciseIndex,
     int? currentRound,
     int? currentRepsInSet,
     DateTime? exerciseStartedAt,
+    bool clearExerciseStartedAt = false,
     int? accumulatedExerciseSeconds,
     String? mode,
     bool? paused,
     DateTime? pausedAt,
     String? planId,
+    DateTime? lastActiveAt,
   }) async {
     final key = session.workoutId; // use workoutId as unique runtime key
     SessionRuntime? existing = _runtimeBox.get(key);
@@ -78,19 +92,27 @@ class SessionCubit extends Cubit<SessionState> {
         paused: paused ?? false,
         pausedAt: pausedAt,
         planId: planId,
+        lastActiveAt: lastActiveAt ?? DateTime.now(),
       );
     } else {
-      existing = existing.copyWith(
-        currentExerciseIndex: currentExerciseIndex,
-        currentRound: currentRound,
-        currentRepsInSet: currentRepsInSet,
-        exerciseStartedAt: exerciseStartedAt,
-        accumulatedExerciseSeconds: accumulatedExerciseSeconds,
-        mode: mode,
-        paused: paused,
-        pausedAt: pausedAt,
+      // Manual rebuild to support explicit clearing of exerciseStartedAt
+      existing = SessionRuntime(
+        sessionWorkoutId: existing.sessionWorkoutId,
+        currentExerciseIndex:
+            currentExerciseIndex ?? existing.currentExerciseIndex,
+        currentRound: currentRound ?? existing.currentRound,
+        currentRepsInSet: currentRepsInSet ?? existing.currentRepsInSet,
+        exerciseStartedAt: clearExerciseStartedAt
+            ? null
+            : (exerciseStartedAt ?? existing.exerciseStartedAt),
+        accumulatedExerciseSeconds:
+            accumulatedExerciseSeconds ?? existing.accumulatedExerciseSeconds,
+        mode: mode ?? existing.mode,
         updatedAt: DateTime.now(),
-        planId: planId,
+        paused: paused ?? existing.paused,
+        pausedAt: pausedAt ?? existing.pausedAt,
+        planId: planId ?? existing.planId,
+        lastActiveAt: lastActiveAt ?? existing.lastActiveAt ?? DateTime.now(),
       );
     }
     await _runtimeBox.put(key, existing);
@@ -108,10 +130,22 @@ class SessionCubit extends Cubit<SessionState> {
   void _ensureTicker() {
     final hasOngoing =
         state.ongoing != null && state.ongoing!.completed == false;
-    if (hasOngoing && _ticker == null) {
+    // Respect paused state from runtime; don't tick while paused
+    bool paused = false;
+    if (hasOngoing) {
+      final rt = getRuntime(state.ongoing!.workoutId);
+      paused = rt?.paused == true;
+    }
+    if (hasOngoing && !paused && _ticker == null) {
       _ticker = Timer.periodic(_tickInterval, (_) async {
         final current = state.ongoing;
         if (current == null || current.completed) {
+          _stopTicker();
+          return;
+        }
+        // Skip ticking if paused mid-flight
+        final rt = getRuntime(current.workoutId);
+        if (rt?.paused == true) {
           _stopTicker();
           return;
         }
@@ -123,6 +157,10 @@ class SessionCubit extends Cubit<SessionState> {
           );
           // Emit updated state without a full refresh to keep it light.
           emit(state.copyWith(ongoing: updated));
+          // Also bump lastActiveAt since we just accounted for time
+          try {
+            await _upsertRuntime(updated, lastActiveAt: DateTime.now());
+          } catch (_) {}
         } catch (_) {
           // Silent for now; could log.
         }
@@ -131,7 +169,7 @@ class SessionCubit extends Cubit<SessionState> {
       _runtimeFlushTimer ??= Timer.periodic(_runtimeFlushInterval, (_) {
         _flushActiveExerciseElapsed();
       });
-    } else if (!hasOngoing) {
+    } else if (!hasOngoing || paused) {
       _stopTicker();
     }
   }
@@ -148,16 +186,31 @@ class SessionCubit extends Cubit<SessionState> {
     try {
       var ongoing = await _repo.getOngoingSession();
       final last = await _repo.getLastCompletedSession();
-      // Reconciliation: if ongoing exists, recompute duration from wall clock to avoid drift.
+      // Reconciliation: if ongoing exists, recompute duration from bounded baseline to avoid drift.
       if (ongoing != null) {
         final now = DateTime.now();
-        final diff = now.difference(ongoing.date).inSeconds;
-        if (diff > ongoing.durationSeconds) {
-          // Update local duration to reconciled diff (do not shrink if user changed system clock).
-          ongoing = await _repo.updateDuration(
-            ongoing.workoutId,
-            diff - ongoing.durationSeconds,
+        final runtime = getRuntime(ongoing.workoutId);
+        final isPaused = runtime?.paused == true;
+        final defaultBaseline = ongoing.date.add(
+          Duration(seconds: ongoing.durationSeconds),
+        );
+        final baseline = runtime?.lastActiveAt ?? defaultBaseline;
+        final boundedDiff = now.isAfter(baseline)
+            ? now.difference(baseline).inSeconds
+            : 0;
+        // Defensive: if paused, ensure exerciseStartedAt is null to avoid stale deltas on resume
+        if (isPaused && runtime?.exerciseStartedAt != null) {
+          await _upsertRuntime(
+            ongoing,
+            exerciseStartedAt: null,
+            clearExerciseStartedAt: true,
           );
+        }
+        if (!isPaused && boundedDiff > 0) {
+          // Update local duration by the missing amount since lastActiveAt
+          ongoing = await _repo.updateDuration(ongoing.workoutId, boundedDiff);
+          // Advance baseline to now
+          await _upsertRuntime(ongoing, lastActiveAt: now);
         }
         // Stale session cleanup (e.g., > 8 hours old and not completed => auto-complete)
         const staleThreshold = Duration(hours: 8);
@@ -446,10 +499,16 @@ class SessionCubit extends Cubit<SessionState> {
         session,
         accumulatedExerciseSeconds: runtime.accumulatedExerciseSeconds + extra,
         exerciseStartedAt: null,
+        clearExerciseStartedAt: true,
         paused: true,
         pausedAt: DateTime.now(),
         mode: runtime.mode == 'exercising' ? 'ready' : runtime.mode,
+        lastActiveAt: DateTime.now(),
       );
+      // Ensure the paused flag is flushed to disk before app can be killed
+      try {
+        await _runtimeBox.flush();
+      } catch (_) {}
     }
   }
 
@@ -457,7 +516,6 @@ class SessionCubit extends Cubit<SessionState> {
   Future<void> resumeSession() async {
     final session = state.ongoing;
     if (session == null || session.completed) return;
-    _ensureTicker();
     final runtime = getRuntime(session.workoutId);
     if (runtime != null) {
       await _upsertRuntime(
@@ -466,8 +524,11 @@ class SessionCubit extends Cubit<SessionState> {
         pausedAt: null,
         exerciseStartedAt: DateTime.now(),
         mode: runtime.mode == 'ready' ? 'exercising' : runtime.mode,
+        lastActiveAt: DateTime.now(),
       );
     }
+    // Start ticker after runtime updated
+    _ensureTicker();
   }
 
   /// Flush currently accruing exercise elapsed seconds into accumulatedExerciseSeconds.
@@ -488,6 +549,7 @@ class SessionCubit extends Cubit<SessionState> {
       accumulatedExerciseSeconds: runtime.accumulatedExerciseSeconds + extra,
       exerciseStartedAt:
           DateTime.now(), // reset baseline so we don't double count
+      lastActiveAt: DateTime.now(),
     );
   }
 

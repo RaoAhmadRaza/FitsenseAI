@@ -1,8 +1,12 @@
+import 'dart:convert';
 import 'package:ai_fitness_tracker/features/auth/presentation/pages/profile.dart';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:hive/hive.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'firebase_options.dart' as firebase_options;
 
@@ -16,6 +20,7 @@ import 'features/auth/data/repositories/auth_repository.dart';
 import 'core/db/app_database.dart'; // SQLite layer
 import 'features/debug/sensor_demo_page.dart';
 import 'features/workout/data/workout_session_repository.dart';
+import 'features/sensors/data/sensor_repository.dart';
 import 'core/models/workout_session.dart'; // WorkoutSession + ExerciseProgress Hive models
 import 'core/models/exercise_set.dart';
 import 'logic/session/session_cubit.dart';
@@ -29,6 +34,9 @@ import 'features/home/pages/history_placeholder.dart';
 import 'features/auth/presentation/pages/inividualWorkout.dart';
 import 'core/navigation/app_routes.dart';
 import 'features/workout/pages/session_summary_screen.dart';
+import 'core/db/session_index.dart';
+import 'core/models/meal_entry.dart';
+import 'core/models/sensor_sample.dart';
 
 // Global user info (populated after sign-in)
 String? gUserUid;
@@ -50,8 +58,38 @@ void main() async {
     options: firebase_options.DefaultFirebaseOptions.currentPlatform,
   );
   await Hive.initFlutter();
-  // Open (or create) a Hive box for user profile caching
-  await Hive.openBox('userBox');
+  // Open (or create) a Hive box for user profile caching (encrypted)
+  // We derive/store a 256-bit key in the platform keystore via flutter_secure_storage.
+  final secureStorage = const FlutterSecureStorage();
+  const keyName = 'hive_userbox_key_v1';
+  String? base64Key = await secureStorage.read(key: keyName);
+  if (base64Key == null) {
+    // 32 random bytes -> base64
+    final bytes = Hive.generateSecureKey();
+    base64Key = base64Encode(bytes);
+    await secureStorage.write(key: keyName, value: base64Key);
+  }
+  final cipher = HiveAesCipher(base64Decode(base64Key));
+  try {
+    await Hive.openBox('userBox', encryptionCipher: cipher);
+  } catch (_) {
+    // Migration: if box existed unencrypted, read, re-create encrypted.
+    try {
+      final tmp = await Hive.openBox('userBox');
+      final entries = Map<String, dynamic>.from(tmp.toMap());
+      await tmp.close();
+      await Hive.deleteBoxFromDisk('userBox');
+      final enc = await Hive.openBox('userBox', encryptionCipher: cipher);
+      for (final e in entries.entries) {
+        await enc.put(e.key, e.value);
+      }
+    } catch (_) {
+      // As last resort, ensure we have an encrypted box even if migration failed
+      if (!Hive.isBoxOpen('userBox')) {
+        await Hive.openBox('userBox', encryptionCipher: cipher);
+      }
+    }
+  }
 
   // Register workout session adapters (idempotent guard) & open session box.
   if (!Hive.isAdapterRegistered(10)) {
@@ -72,6 +110,12 @@ void main() async {
   if (!Hive.isAdapterRegistered(15)) {
     Hive.registerAdapter(SessionRuntimeAdapter());
   }
+  if (!Hive.isAdapterRegistered(16)) {
+    Hive.registerAdapter(MealEntryAdapter());
+  }
+  if (!Hive.isAdapterRegistered(17)) {
+    Hive.registerAdapter(SensorSampleAdapter());
+  }
   // Box holds serialized WorkoutSession objects; fast path for ongoing/last sessions.
   await Hive.openBox<WorkoutSession>('sessionBox');
   // Separate box for granular per-set tracking (optional layer).
@@ -79,6 +123,12 @@ void main() async {
   // Box for workout plan templates (re-usable definitions, not active sessions)
   await Hive.openBox<WorkoutPlan>('workoutPlanBox');
   await Hive.openBox<SessionRuntime>('sessionRuntimeBox');
+  // Open session index box for fast queries
+  await SessionIndex.open();
+  // Meals box (scaffolding)
+  await Hive.openBox<MealEntry>('mealBox');
+  // Sensor samples (dev/analytics; no SQLite mirror)
+  await Hive.openBox<SensorSample>('sensorSampleBox');
 
   // Initialize SQLite and attempt to hydrate extended profile into globals.
   try {
@@ -119,6 +169,9 @@ void main() async {
         RepositoryProvider<WorkoutSessionRepository>(
           create: (_) => WorkoutSessionRepository(),
         ),
+        RepositoryProvider<SensorRepository>(
+          create: (_) => const SensorRepositoryImpl(),
+        ),
         RepositoryProvider<WorkoutPlanRepository>(
           create: (_) => WorkoutPlanRepository(),
         ),
@@ -153,10 +206,11 @@ class _RootApp extends StatefulWidget {
   State<_RootApp> createState() => _RootAppState();
 }
 
-class _RootAppState extends State<_RootApp> {
+class _RootAppState extends State<_RootApp> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _initDeepLinks();
   }
 
@@ -183,6 +237,27 @@ class _RootAppState extends State<_RootApp> {
       }
     }
     // TODO: analytics: deep_link_open(uri.toString())
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Ensure session runtime pause/resume is persisted on app background/foreground
+    final sessionCubit = context.read<SessionCubit>();
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.detached) {
+      // Fire-and-forget; pauseSession internally awaits runtime flush
+      sessionCubit.pauseSession();
+    } else if (state == AppLifecycleState.resumed) {
+      sessionCubit.resumeSession();
+    }
+    super.didChangeAppLifecycleState(state);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
   }
 
   @override

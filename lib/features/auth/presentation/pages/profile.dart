@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'dart:io';
 import 'dart:ui';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../../../../main.dart'
@@ -67,6 +68,7 @@ class _ProfilePageState extends State<ProfilePage> {
     final box = Hive.box('userBox');
     await box.put('profile', {
       'name': gUserDisplayName,
+      'avatarUrl': gUserPhotoUrl,
       'age': gUserAge,
       'weightKg': gUserWeightKg,
       'heightCm': gUserHeightCm,
@@ -84,6 +86,9 @@ class _ProfilePageState extends State<ProfilePage> {
   @override
   void initState() {
     super.initState();
+    // TODO(analytics): profile_opened
+    // Hook for analytics provider (e.g., Firebase, Segment). Intentionally not wired yet.
+    // Example future call: Analytics.logEvent('profile_opened');
     _usernameController = TextEditingController(text: gUserDisplayName ?? '');
     _usernameFocusNode = FocusNode();
     _usernameController.addListener(() {
@@ -112,6 +117,7 @@ class _ProfilePageState extends State<ProfilePage> {
           _usernameController.text = name;
         }
       }
+      gUserPhotoUrl = data['avatarUrl'] as String? ?? gUserPhotoUrl;
       gUserAge = data['age'] as int? ?? gUserAge;
       gUserWeightKg = (data['weightKg'] as num?)?.toDouble() ?? gUserWeightKg;
       gUserHeightCm = (data['heightCm'] as num?)?.toDouble() ?? gUserHeightCm;
@@ -160,19 +166,70 @@ class _ProfilePageState extends State<ProfilePage> {
                     child: CircleAvatar(
                       radius: 60,
                       backgroundColor: Colors.grey.shade200,
-                      backgroundImage: gUserPhotoUrl != null
-                          ? NetworkImage(gUserPhotoUrl!)
-                          : const AssetImage('assets/default_avatar.png')
-                                as ImageProvider,
+                      backgroundImage:
+                          () /* ImageProvider */ {
+                                final url = gUserPhotoUrl;
+                                if (url == null || url.isEmpty) {
+                                  return const AssetImage(
+                                    'assets/default_avatar.png',
+                                  );
+                                }
+                                if (url.startsWith('http')) {
+                                  return NetworkImage(url);
+                                }
+                                try {
+                                  final f = File(url);
+                                  if (f.existsSync()) return FileImage(f);
+                                } catch (_) {}
+                                return const AssetImage(
+                                  'assets/default_avatar.png',
+                                );
+                              }()
+                              as ImageProvider,
                     ),
                   ),
                   Positioned(
                     bottom: 0,
                     right: 0,
                     child: GestureDetector(
-                      onTap: () {
+                      onTap: () async {
                         HapticFeedback.lightImpact();
-                        // TODO: Add edit avatar functionality
+                        final controller = TextEditingController(
+                          text: gUserPhotoUrl ?? '',
+                        );
+                        final result = await showDialog<String>(
+                          context: context,
+                          builder: (ctx) {
+                            return AlertDialog(
+                              title: const Text('Set Avatar URL or File Path'),
+                              content: TextField(
+                                controller: controller,
+                                decoration: const InputDecoration(
+                                  hintText: 'https://... or /path/to/file',
+                                ),
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(ctx),
+                                  child: const Text('Cancel'),
+                                ),
+                                TextButton(
+                                  onPressed: () => Navigator.pop(
+                                    ctx,
+                                    controller.text.trim(),
+                                  ),
+                                  child: const Text('Save'),
+                                ),
+                              ],
+                            );
+                          },
+                        );
+                        if (result != null) {
+                          setState(() {
+                            gUserPhotoUrl = result.isEmpty ? null : result;
+                          });
+                          await _persistProfile();
+                        }
                       },
                       child: Container(
                         width: 36,

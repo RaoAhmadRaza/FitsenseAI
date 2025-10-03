@@ -26,6 +26,9 @@ class _SensorDemoPageState extends State<SensorDemoPage> {
   @override
   void initState() {
     super.initState();
+    // TODO(analytics): sensor_demo_opened
+    // Hook for analytics provider (e.g., Firebase, Segment). Intentionally not wired yet.
+    // Example future call: Analytics.logEvent('sensor_demo_opened');
 
     // Subscribe to accelerometer
     _accelSub = accelerometerEventStream().listen(

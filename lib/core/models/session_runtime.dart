@@ -29,6 +29,8 @@ class SessionRuntime extends HiveObject {
   DateTime? pausedAt; // when pause initiated
   @HiveField(10)
   String? planId; // nullable: present for plan-derived sessions
+  @HiveField(11)
+  DateTime? lastActiveAt; // last moment we accounted duration (bounds reconciliation)
 
   SessionRuntime({
     required this.sessionWorkoutId,
@@ -42,6 +44,7 @@ class SessionRuntime extends HiveObject {
     this.paused = false,
     this.pausedAt,
     this.planId,
+    this.lastActiveAt,
   });
 
   SessionRuntime copyWith({
@@ -55,6 +58,7 @@ class SessionRuntime extends HiveObject {
     bool? paused,
     DateTime? pausedAt,
     String? planId,
+    DateTime? lastActiveAt,
   }) => SessionRuntime(
     sessionWorkoutId: sessionWorkoutId,
     currentExerciseIndex: currentExerciseIndex ?? this.currentExerciseIndex,
@@ -68,6 +72,7 @@ class SessionRuntime extends HiveObject {
     paused: paused ?? this.paused,
     pausedAt: pausedAt ?? this.pausedAt,
     planId: planId ?? this.planId,
+    lastActiveAt: lastActiveAt ?? this.lastActiveAt,
   );
 }
 
@@ -94,13 +99,14 @@ class SessionRuntimeAdapter extends TypeAdapter<SessionRuntime> {
       paused: fields[8] as bool? ?? false,
       pausedAt: fields[9] as DateTime?,
       planId: fields[10] as String?,
+      lastActiveAt: fields[11] as DateTime?,
     );
   }
 
   @override
   void write(BinaryWriter writer, SessionRuntime obj) {
     writer
-      ..writeByte(11)
+      ..writeByte(12)
       ..writeByte(0)
       ..write(obj.sessionWorkoutId)
       ..writeByte(1)
@@ -122,6 +128,8 @@ class SessionRuntimeAdapter extends TypeAdapter<SessionRuntime> {
       ..writeByte(9)
       ..write(obj.pausedAt)
       ..writeByte(10)
-      ..write(obj.planId);
+      ..write(obj.planId)
+      ..writeByte(11)
+      ..write(obj.lastActiveAt);
   }
 }

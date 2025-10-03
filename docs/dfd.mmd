@@ -1,0 +1,18 @@
+flowchart TD
+  subgraph Device
+    App[Flutter App]
+    Hive[(Hive Boxes)]
+    SQLite[(SQLite DB)]
+    Keystore[[OS Keystore]]
+  end
+
+  App -- Auth tokens --> FirebaseAuth[(Firebase Auth)]
+  App -- Profile/Session Data --> Hive
+  App -- Profile/Session Data --> SQLite
+  App -- AES Key (derive/store) --> Keystore
+
+  FirebaseAuth -- ID Token --> App
+
+  %% Optional future services
+  App -.-> Crashlytics[(Crash Reporting)]
+  App -.-> Analytics[(Analytics)]

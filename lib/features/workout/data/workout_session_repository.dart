@@ -10,6 +10,8 @@ import '../../../core/models/workout_session.dart';
 import '../../../core/models/exercise_set.dart';
 import '../../../core/db/app_database.dart';
 import '../../../core/utils/logger.dart';
+import '../../../core/models/session_runtime.dart';
+import '../../../core/db/session_index.dart';
 
 class WorkoutSessionRepository {
   WorkoutSessionRepository();
@@ -36,6 +38,10 @@ class WorkoutSessionRepository {
       completed: false,
     );
     await _box.add(session);
+    // Update index: mark ongoing
+    unawaited(
+      SessionIndex.onOngoingChanged(workoutId: workoutId, isOngoing: true),
+    );
     // Mirror to SQLite (ignore errors for now)
     unawaited(_mirrorInsert(session));
     return session;
@@ -43,10 +49,12 @@ class WorkoutSessionRepository {
 
   Future<void> _mirrorInsert(WorkoutSession s) async {
     try {
-      await WorkoutSessionSqlHelpers.insertWorkoutSession(
+      final id = await WorkoutSessionSqlHelpers.insertWorkoutSession(
         workoutId: s.workoutId,
         date: s.date,
       );
+      // Persist the rowId mapping for reliable future updates
+      await SessionIndex.setSessionRowId(workoutId: s.workoutId, rowId: id);
     } catch (e, st) {
       logError('Mirror insert workout_session failed: $e', st);
     }
@@ -66,7 +74,31 @@ class WorkoutSessionRepository {
     return sessions.first;
   }
 
-  Future<WorkoutSession?> getOngoingSession() async => getOngoingSessionSync();
+  // getOngoingSession implemented below to backfill SQLite rowId mapping
+  
+  // Ensure we have a SQLite rowId mapping for a given session (best-effort, non-blocking call sites can unawait).
+  Future<void> _ensureRowMapping(WorkoutSession s) async {
+    try {
+      if (SessionIndex.getSessionRowId(s.workoutId) != null) return;
+      final row = await WorkoutSessionSqlHelpers.getSessionRowByWorkoutId(
+        s.workoutId,
+      );
+      final id = row?['id'] as int?;
+      if (id != null) {
+        await SessionIndex.setSessionRowId(workoutId: s.workoutId, rowId: id);
+      }
+    } catch (_) {
+      // best-effort; ignore
+    }
+  }
+
+  Future<WorkoutSession?> getOngoingSession() async {
+    final s = getOngoingSessionSync();
+    if (s != null) {
+      unawaited(_ensureRowMapping(s));
+    }
+    return s;
+  }
   Future<WorkoutSession?> getLastCompletedSession() async =>
       getLastCompletedSessionSync();
 
@@ -81,6 +113,8 @@ class WorkoutSessionRepository {
       durationSeconds: s.durationSeconds + deltaSeconds,
     );
     await _box.putAt(idx, updated);
+    // Index: if still ongoing, no daily accumulation yet; when completed we add final.
+    // Optionally, you could keep a rolling daily tally, but to avoid double-count we wait for completion.
     // Mirror duration update (best-effort)
     unawaited(_mirrorUpdateDuration(updated));
     return updated;
@@ -88,11 +122,30 @@ class WorkoutSessionRepository {
 
   Future<void> _mirrorUpdateDuration(WorkoutSession s) async {
     try {
-      // Need the SQLite row id; for now we just update the latest ongoing row.
-      final row = await WorkoutSessionSqlHelpers.getOngoingSessionRow();
-      if (row != null) {
+      // Defensive: if runtime is paused, do not mirror duration updates
+      try {
+        final rt = Hive.box<SessionRuntime>(
+          'sessionRuntimeBox',
+        ).get(s.workoutId);
+        if (rt?.paused == true) return;
+      } catch (_) {}
+      // Use mapped rowId first; fall back to lookup by workoutId
+      int? rowId = SessionIndex.getSessionRowId(s.workoutId);
+      if (rowId == null) {
+        final row = await WorkoutSessionSqlHelpers.getSessionRowByWorkoutId(
+          s.workoutId,
+        );
+        rowId = row?['id'] as int?;
+        if (rowId != null) {
+          await SessionIndex.setSessionRowId(
+            workoutId: s.workoutId,
+            rowId: rowId,
+          );
+        }
+      }
+      if (rowId != null) {
         await WorkoutSessionSqlHelpers.updateWorkoutSession(
-          id: row['id'] as int,
+          id: rowId,
           durationSeconds: s.durationSeconds,
         );
       }
@@ -126,9 +179,22 @@ class WorkoutSessionRepository {
 
   Future<void> _mirrorUpsertExercise(ExerciseProgress p) async {
     try {
-      final row = await WorkoutSessionSqlHelpers.getOngoingSessionRow();
-      if (row == null) return; // can't map
-      final sessionId = row['id'] as int;
+      // Resolve current session row id by ongoing or mapping (prefer mapping)
+      int? sessionId;
+      // Try mapping by inspecting current ongoing from Hive
+      final ongoing = getOngoingSessionSync();
+      if (ongoing != null) {
+        sessionId = SessionIndex.getSessionRowId(ongoing.workoutId);
+        sessionId ??=
+            (await WorkoutSessionSqlHelpers.getSessionRowByWorkoutId(
+                  ongoing.workoutId,
+                ))?['id']
+                as int?;
+      }
+      sessionId ??=
+          (await WorkoutSessionSqlHelpers.getOngoingSessionRow())?['id']
+              as int?;
+      if (sessionId == null) return; // can't map
       await WorkoutSessionSqlHelpers.upsertExerciseProgress(
         sessionId: sessionId,
         exerciseId: p.exerciseId,
@@ -149,19 +215,33 @@ class WorkoutSessionRepository {
     if (s.completed) return s;
     final updated = s.copyWith(completed: true);
     await _box.putAt(idx, updated);
+    // Update index: mark not ongoing and add to daily bucket
+    unawaited(
+      SessionIndex.onOngoingChanged(workoutId: sessionId, isOngoing: false),
+    );
+    unawaited(SessionIndex.onSessionCompleted(updated));
     unawaited(_mirrorComplete(updated));
     return updated;
   }
 
   Future<void> _mirrorComplete(WorkoutSession s) async {
     try {
-      final row = await WorkoutSessionSqlHelpers.getOngoingSessionRow();
-      if (row != null) {
+      int? rowId = SessionIndex.getSessionRowId(s.workoutId);
+      rowId ??=
+          (await WorkoutSessionSqlHelpers.getSessionRowByWorkoutId(
+                s.workoutId,
+              ))?['id']
+              as int?;
+      rowId ??=
+          (await WorkoutSessionSqlHelpers.getOngoingSessionRow())?['id']
+              as int?;
+      if (rowId != null) {
         await WorkoutSessionSqlHelpers.updateWorkoutSession(
-          id: row['id'] as int,
+          id: rowId,
           completed: true,
           durationSeconds: s.durationSeconds,
         );
+        // Once completed, mapping can be retained for history; no need to clear.
       }
     } catch (e, st) {
       logError('Mirror complete failed: $e', st);
@@ -238,5 +318,52 @@ class WorkoutSessionRepository {
     } catch (e, st) {
       logError('Mirror insert set failed: $e', st);
     }
+  }
+
+  // =============================
+  // Aggregates (Hive source of truth)
+  // =============================
+
+  /// Total minutes across completed sessions within optional [from, to) bounds.
+  /// Bounds are inclusive of [from] (start of window) and exclusive of [to] if provided.
+  /// If both are null, sums all completed sessions.
+  Future<int> getTotalMinutes({DateTime? from, DateTime? to}) async {
+    final sessions = _box.values;
+    int seconds = 0;
+    for (final s in sessions) {
+      if (!s.completed) continue;
+      final d = s.date;
+      if (from != null && d.isBefore(from)) continue;
+      if (to != null && !d.isBefore(to)) continue; // exclusive upper bound
+      seconds += s.durationSeconds;
+    }
+    return seconds ~/ 60;
+  }
+
+  /// Count of completed sessions in the box.
+  Future<int> getCompletedSessionsCount() async {
+    return _box.values.where((s) => s.completed).length;
+  }
+
+  /// Returns a map of last 7 days (including today) -> minutes for completed sessions.
+  /// Keys are the local midnight DateTime for each day.
+  Future<Map<DateTime, int>> getLast7DaysBreakdown({DateTime? now}) async {
+    final Map<DateTime, int> out = {};
+    final n = now ?? DateTime.now();
+    DateTime startOfToday = DateTime(n.year, n.month, n.day);
+    // Seed all 7 days with 0
+    for (int i = 0; i < 7; i++) {
+      final day = startOfToday.subtract(Duration(days: i));
+      out[day] = 0;
+    }
+    for (final s in _box.values) {
+      if (!s.completed) continue;
+      final d = DateTime(s.date.year, s.date.month, s.date.day);
+      final diff = startOfToday.difference(d).inDays;
+      if (diff >= 0 && diff < 7) {
+        out[d] = (out[d] ?? 0) + (s.durationSeconds ~/ 60);
+      }
+    }
+    return out;
   }
 }

@@ -11,11 +11,9 @@ void logWarn(String message) {
   dev.log(message, name: 'WARN');
 }
 
-void logError(String message, [Object? stack]) {
-  dev.log(
-    message,
-    name: 'ERROR',
-    error: message,
-    stackTrace: stack is StackTrace ? stack : null,
-  );
+void logError(String message, [Object? errorOrStack]) {
+  // Preserve existing call sites: the optional argument may be an error object OR a StackTrace.
+  final Object? error = errorOrStack is StackTrace ? null : errorOrStack;
+  final StackTrace? stack = errorOrStack is StackTrace ? errorOrStack : null;
+  dev.log(message, name: 'ERROR', error: error, stackTrace: stack);
 }

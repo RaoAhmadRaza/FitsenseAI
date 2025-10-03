@@ -1,0 +1,51 @@
+name: Security Audit
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+
+      - name: Flutter pub get
+        run: flutter pub get
+
+      - name: Flutter analyze
+        run: flutter analyze
+
+      - name: Run tests
+        run: flutter test --reporter=expanded
+
+      - name: OSV dependency scan
+        uses: google/osv-scanner-action@v1
+        with:
+          scan-args: |-
+            -r .
+
+      - name: Install semgrep
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install semgrep
+
+      - name: Semgrep scan
+        run: semgrep ci --config=.semgrep/semgrep.yml
+        env:
+          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+
+      - name: Detect Secrets Scan
+        run: |
+          python3 -m pip install detect-secrets
+          detect-secrets scan --all-files > .secrets.baseline.tmp
+          detect-secrets audit .secrets.baseline.tmp -n || true
+          detect-secrets scan --baseline .secrets.baseline || true
