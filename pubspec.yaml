@@ -38,7 +38,7 @@ dependencies:
   google_sign_in: ^7.1.1 # google sign-in sdk
   hive: any # local database sdk
   hive_flutter: any # hive flutter adapter
-  sqflite: any # sqlite sdk
+  sqflite_sqlcipher: ^3.3.0 # encrypted sqlite (SQLCipher)
   path: any # used for file path joins in SQLite helper
   path_provider: any # find paths in filesystem
   sensors_plus: any # access to device sensors

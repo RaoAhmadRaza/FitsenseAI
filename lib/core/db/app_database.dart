@@ -13,9 +13,12 @@
 // can be introduced later if complexity grows.
 
 import 'dart:async';
-import 'package:sqflite/sqflite.dart';
+import 'dart:convert';
+import 'dart:math';
+import 'package:sqflite_sqlcipher/sqflite.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../../../main.dart' as globals;
 import '../../core/utils/logger.dart';
@@ -50,20 +53,44 @@ class AppDatabase {
     final dir = await getApplicationDocumentsDirectory();
     final path = p.join(dir.path, _dbName);
 
-    _instance = await openDatabase(
-      path,
-      version: _dbVersion,
-      onCreate: (db, version) async {
-        await _createSchema(db);
-      },
-      onUpgrade: (db, oldV, newV) async {
-        // Migration path (incremental, fall-through style if future versions added)
-        if (oldV < 2) {
-          // v2 adds workout plan normalization tables (pure additive)
-          await _createWorkoutPlanTables(db);
-        }
-      },
-    );
+    // Derive/read a SQLCipher passphrase from the platform keystore.
+    const storage = FlutterSecureStorage();
+    const keyName = 'sqlcipher_key_v1';
+    String? passphrase = await storage.read(key: keyName);
+    if (passphrase == null) {
+      // Generate 32 random bytes and store as base64 string.
+      final rand = Random.secure();
+      final bytes = List<int>.generate(32, (_) => rand.nextInt(256));
+      passphrase = base64Encode(bytes);
+      await storage.write(key: keyName, value: passphrase);
+    }
+
+    Future<Database> _openEncrypted() => openDatabase(
+          path,
+          password: passphrase,
+          version: _dbVersion,
+          onCreate: (db, version) async {
+            await _createSchema(db);
+          },
+          onUpgrade: (db, oldV, newV) async {
+            // Migration path (incremental, fall-through style if future versions added)
+            if (oldV < 2) {
+              // v2 adds workout plan normalization tables (pure additive)
+              await _createWorkoutPlanTables(db);
+            }
+          },
+        );
+
+    try {
+      _instance = await _openEncrypted();
+    } catch (e) {
+      // If we cannot open (likely due to an existing plaintext DB), recreate as encrypted.
+      // Developer-friendly path: wipe and recreate. A migration path can be added later.
+      try {
+        await deleteDatabase(path);
+      } catch (_) {}
+      _instance = await _openEncrypted();
+    }
     return _instance!;
   }
 

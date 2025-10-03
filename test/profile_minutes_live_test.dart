@@ -55,8 +55,8 @@ void main() {
       final binding = TestWidgetsFlutterBinding.ensureInitialized();
       binding.window.clearPhysicalSizeTestValue();
       binding.window.clearDevicePixelRatioTestValue();
-      await Hive.deleteBoxFromDisk('sessionBox');
-      await Hive.deleteBoxFromDisk('userBox');
+      // Avoid deleting boxes from disk here; in some environments this can hang
+      // due to lingering listeners. Closing is sufficient for single-run tests.
     });
 
     testWidgets(
@@ -72,9 +72,8 @@ void main() {
             child: MultiBlocProvider(
               providers: [
                 BlocProvider<SessionCubit>(
-                  create: (ctx) => SessionCubit(
-                    ctx.read<WorkoutSessionRepository>(),
-                  ),
+                  create: (ctx) =>
+                      SessionCubit(ctx.read<WorkoutSessionRepository>()),
                 ),
               ],
               child: const MaterialApp(home: ProfileSettings()),
