@@ -101,6 +101,13 @@ flutter:
     - assets/images/_.jpeg
     - assets/images/dl1.jpg
     - assets/images/
+    # Audit artifacts (for in-app viewing in the Audit Dashboard)
+    - docs/audit-report.md
+    - docs/findings.csv
+    - docs/dfd.mmd
+    - .github/workflows/security-audit.yml
+    - .semgrep/semgrep.yml
+    - scripts/run-audit.sh
   #   - images/a_dot_ham.jpeg
 
   # An image asset can refer to one or more resolution-specific "variants", see

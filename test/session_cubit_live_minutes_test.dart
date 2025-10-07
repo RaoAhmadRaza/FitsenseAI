@@ -19,40 +19,49 @@ void main() {
     setUp(() async {
       final dir = await Directory.systemTemp.createTemp('hive_test_live');
       Hive.init(dir.path);
-      if (!Hive.isAdapterRegistered(10)) Hive.registerAdapter(ExerciseProgressAdapter());
-      if (!Hive.isAdapterRegistered(11)) Hive.registerAdapter(WorkoutSessionAdapter());
-      if (!Hive.isAdapterRegistered(15)) Hive.registerAdapter(SessionRuntimeAdapter());
-  await Hive.openBox<WorkoutSession>('sessionBox');
-  await Hive.openBox<SessionRuntime>('sessionRuntimeBox');
+      if (!Hive.isAdapterRegistered(10))
+        Hive.registerAdapter(ExerciseProgressAdapter());
+      if (!Hive.isAdapterRegistered(11))
+        Hive.registerAdapter(WorkoutSessionAdapter());
+      if (!Hive.isAdapterRegistered(15))
+        Hive.registerAdapter(SessionRuntimeAdapter());
+      await Hive.openBox<WorkoutSession>('sessionBox');
+      await Hive.openBox<SessionRuntime>('sessionRuntimeBox');
       repo = WorkoutSessionRepository();
       cubit = SessionCubit(repo);
     });
 
     tearDown(() async {
       await cubit.close();
-      if (Hive.isBoxOpen('sessionRuntimeBox')) await Hive.box<SessionRuntime>('sessionRuntimeBox').deleteFromDisk();
-      if (Hive.isBoxOpen('sessionBox')) await Hive.box<WorkoutSession>('sessionBox').deleteFromDisk();
+      if (Hive.isBoxOpen('sessionRuntimeBox'))
+        await Hive.box<SessionRuntime>('sessionRuntimeBox').deleteFromDisk();
+      if (Hive.isBoxOpen('sessionBox'))
+        await Hive.box<WorkoutSession>('sessionBox').deleteFromDisk();
     });
 
-    test('ticks up while running, stays frozen when paused', () async {
-  await repo.startSession(workoutId: 'live_1');
-      // seed cubit state
-      await cubit.refresh();
+    test(
+      'ticks up while running, stays frozen when paused',
+      () async {
+        await repo.startSession(workoutId: 'live_1');
+        // seed cubit state
+        await cubit.refresh();
 
-      final initial = cubit.state.ongoing?.durationSeconds ?? 0;
-      expect(initial, 0);
+        final initial = cubit.state.ongoing?.durationSeconds ?? 0;
+        expect(initial, 0);
 
-      // wait slightly more than one tick (5s)
-      await Future.delayed(const Duration(seconds: 6));
-      final afterTick = cubit.state.ongoing?.durationSeconds ?? 0;
-      expect(afterTick >= initial + 5, true);
+        // wait slightly more than one tick (5s)
+        await Future.delayed(const Duration(seconds: 6));
+        final afterTick = cubit.state.ongoing?.durationSeconds ?? 0;
+        expect(afterTick >= initial + 5, true);
 
-      // Pause and wait another 5s; value should stay the same
-      await cubit.pauseSession();
-      final pausedValue = cubit.state.ongoing?.durationSeconds ?? 0;
-      await Future.delayed(const Duration(seconds: 6));
-      final afterPauseWait = cubit.state.ongoing?.durationSeconds ?? 0;
-      expect(afterPauseWait, pausedValue);
-    }, timeout: Timeout(const Duration(seconds: 25)));
+        // Pause and wait another 5s; value should stay the same
+        await cubit.pauseSession();
+        final pausedValue = cubit.state.ongoing?.durationSeconds ?? 0;
+        await Future.delayed(const Duration(seconds: 6));
+        final afterPauseWait = cubit.state.ongoing?.durationSeconds ?? 0;
+        expect(afterPauseWait, pausedValue);
+      },
+      timeout: Timeout(const Duration(seconds: 25)),
+    );
   });
 }

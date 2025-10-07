@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
+import 'package:flutter/services.dart';
+import 'dart:ui';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../logic/workouts/workouts_cubit.dart';
 import '../../../core/models/workout_plan.dart';
@@ -29,16 +32,39 @@ class PlanDetailScreen extends StatelessWidget {
           );
           final missing = plan.id == 'missing';
           return Scaffold(
+            backgroundColor: const Color(0xFFF9FAFB),
             appBar: AppBar(
-              title: Text(missing ? 'Plan Missing' : plan.name),
+              backgroundColor: const Color(0xFFF9FAFB),
+              elevation: 0,
+              shadowColor: Colors.transparent,
+              surfaceTintColor: Colors.transparent,
+              iconTheme: const IconThemeData(color: Colors.black),
+              title: Hero(
+                tag: 'title_${plan.id}',
+                flightShuttleBuilder:
+                    (context, animation, direction, from, to) =>
+                        FadeTransition(opacity: animation, child: to.widget),
+                child: Text(
+                  missing ? 'Plan Missing' : plan.name,
+                  style: const TextStyle(
+                    fontFamily: 'SF Pro Display',
+                    fontWeight: FontWeight.w700,
+                    fontSize: 22,
+                    letterSpacing: -0.3,
+                    color: Color(0xFF111827),
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
               actions: [
                 if (!missing)
                   IconButton(
                     tooltip: 'Rename',
-                    icon: const Icon(Icons.edit),
+                    icon: const Icon(Icons.edit, color: Colors.black),
                     onPressed: () => _showRenameDialog(context, plan),
                   ),
               ],
+              centerTitle: true,
             ),
             floatingActionButton: missing
                 ? null
@@ -49,13 +75,14 @@ class PlanDetailScreen extends StatelessWidget {
                       builder: (ctx) {
                         final inFlight =
                             StartPlanInFlightMarker.of(ctx)?.inFlight ?? false;
-                        return FloatingActionButton.extended(
-                          onPressed: inFlight
-                              ? null
-                              : () => AppNavigator.startPlan(ctx, plan),
-                          label: Text(inFlight ? 'Starting…' : 'Start Plan'),
-                          icon: const Icon(Icons.play_arrow),
-                          backgroundColor: AppColors.fitnessBlue,
+                        return _FrostedFab(
+                          label: inFlight ? 'Starting…' : 'Start Plan',
+                          icon: CupertinoIcons.play_fill,
+                          enabled: !inFlight,
+                          onPressed: () {
+                            HapticFeedback.mediumImpact();
+                            AppNavigator.startPlan(ctx, plan);
+                          },
                         );
                       },
                     ),
@@ -71,26 +98,48 @@ class PlanDetailScreen extends StatelessWidget {
 
   void _showRenameDialog(BuildContext context, WorkoutPlan plan) {
     final ctrl = TextEditingController(text: plan.name);
+    HapticFeedback.lightImpact();
     showDialog(
       context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Rename Plan'),
-        content: TextField(
-          controller: ctrl,
-          decoration: const InputDecoration(labelText: 'Name'),
-          autofocus: true,
-          onSubmitted: (_) => _commitRename(context, plan, ctrl.text),
+      barrierColor: Colors.black.withOpacity(0.2),
+      builder: (_) => BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        child: AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          title: const Text(
+            'Rename Plan',
+            style: TextStyle(
+              fontFamily: 'SF Pro Display',
+              fontWeight: FontWeight.w700,
+              fontSize: 18,
+              color: Color(0xFF111827),
+            ),
+          ),
+          content: TextField(
+            controller: ctrl,
+            decoration: const InputDecoration(
+              labelText: 'Name',
+              labelStyle: TextStyle(
+                fontFamily: 'SF Pro Text',
+                color: Color(0xFF6B7280),
+              ),
+            ),
+            autofocus: true,
+            onSubmitted: (_) => _commitRename(context, plan, ctrl.text),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => _commitRename(context, plan, ctrl.text),
+              child: const Text('Save'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => _commitRename(context, plan, ctrl.text),
-            child: const Text('Save'),
-          ),
-        ],
       ),
     );
   }
@@ -106,6 +155,7 @@ class PlanDetailScreen extends StatelessWidget {
     final updated = plan.copyWith(name: trimmed);
     await context.read<WorkoutsCubit>().updatePlan(updated);
     if (context.mounted) {
+      HapticFeedback.mediumImpact();
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Plan renamed')));
@@ -122,9 +172,37 @@ class _PlanDetailBody extends StatelessWidget {
     final equip = plan.equipment.isEmpty
         ? 'Bodyweight / None'
         : plan.equipment.join(', ');
+    final thumb = plan.exercises.isNotEmpty
+        ? plan.exercises.first.imagePath
+        : null;
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
       children: [
+        if (thumb != null && thumb.isNotEmpty) ...[
+          Center(
+            child: Hero(
+              tag: 'thumb_${plan.id}',
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  width: 90,
+                  height: 90,
+                  color: Colors.grey.shade200,
+                  child: Image.asset(
+                    thumb,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => const Icon(
+                      Icons.fitness_center,
+                      size: 36,
+                      color: Colors.grey,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
         _MetaRow(icon: Icons.fitness_center, label: 'Level', value: plan.level),
         const SizedBox(height: 8),
         _MetaRow(
@@ -142,9 +220,11 @@ class _PlanDetailBody extends StatelessWidget {
         Text(
           'Exercises (${plan.exercises.length})',
           style: const TextStyle(
-            fontFamily: 'Sora',
+            fontFamily: 'SF Pro Display',
             fontWeight: FontWeight.w700,
-            fontSize: 16,
+            fontSize: 18,
+            letterSpacing: -0.2,
+            color: Color(0xFF111827),
           ),
         ),
         const SizedBox(height: 12),
@@ -152,12 +232,23 @@ class _PlanDetailBody extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: Colors.grey.shade100,
+              color: Colors.white,
               borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 12,
+                  offset: const Offset(0, 6),
+                ),
+              ],
             ),
             child: const Text(
               'No exercises yet. Tap + in the browser to add (coming soon).',
-              style: TextStyle(fontFamily: 'Sora', fontSize: 13),
+              style: TextStyle(
+                fontFamily: 'SF Pro Text',
+                fontSize: 13,
+                color: Color(0xFF6B7280),
+              ),
             ),
           )
         else ...[
@@ -180,9 +271,9 @@ class _ExerciseTile extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 6,
-            offset: const Offset(0, 3),
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 12,
+            offset: const Offset(0, 6),
           ),
         ],
       ),
@@ -191,20 +282,21 @@ class _ExerciseTile extends StatelessWidget {
         title: Text(
           e.name,
           style: const TextStyle(
-            fontFamily: 'Sora',
-            fontWeight: FontWeight.w600,
-            fontSize: 14,
+            fontFamily: 'SF Pro Text',
+            fontWeight: FontWeight.w700,
+            fontSize: 15,
+            color: Color(0xFF111827),
           ),
         ),
         subtitle: Text(
           '${e.sets} x ${e.reps}  •  ${e.targetMuscle}',
           style: TextStyle(
-            fontFamily: 'Sora',
-            fontSize: 12,
-            color: Colors.grey.shade700,
+            fontFamily: 'SF Pro Text',
+            fontSize: 13,
+            color: const Color(0xFF6B7280),
           ),
         ),
-        trailing: const Icon(Icons.chevron_right),
+        trailing: const Icon(CupertinoIcons.chevron_forward, size: 18),
         onTap: () {
           // Placeholder for future exercise edit/detail.
         },
@@ -264,19 +356,20 @@ class _MetaRow extends StatelessWidget {
               Text(
                 label,
                 style: const TextStyle(
-                  fontFamily: 'Sora',
-                  fontSize: 11,
+                  fontFamily: 'SF Pro Text',
+                  fontSize: 12,
                   fontWeight: FontWeight.w600,
-                  color: Colors.black54,
+                  color: Color(0xFF6B7280),
                 ),
               ),
               const SizedBox(height: 2),
               Text(
                 value,
                 style: const TextStyle(
-                  fontFamily: 'Sora',
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
+                  fontFamily: 'SF Pro Text',
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF111827),
                 ),
               ),
             ],
@@ -300,7 +393,7 @@ class _MissingPlanBody extends StatelessWidget {
           const Text(
             'Plan Not Found',
             style: TextStyle(
-              fontFamily: 'Sora',
+              fontFamily: 'SF Pro Display',
               fontWeight: FontWeight.w700,
               fontSize: 18,
             ),
@@ -309,12 +402,91 @@ class _MissingPlanBody extends StatelessWidget {
           Text(
             'It may have been deleted or is unavailable.',
             style: TextStyle(
-              fontFamily: 'Sora',
+              fontFamily: 'SF Pro Text',
               fontSize: 13,
-              color: Colors.grey.shade600,
+              color: Color(0xFF6B7280),
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _FrostedFab extends StatefulWidget {
+  final String label;
+  final IconData icon;
+  final VoidCallback? onPressed;
+  final bool enabled;
+  const _FrostedFab({
+    required this.label,
+    required this.icon,
+    this.onPressed,
+    this.enabled = true,
+  });
+
+  @override
+  State<_FrostedFab> createState() => _FrostedFabState();
+}
+
+class _FrostedFabState extends State<_FrostedFab> {
+  bool _pressed = false;
+  @override
+  Widget build(BuildContext context) {
+    final effectiveOpacity = widget.enabled ? 1.0 : 0.6;
+    return GestureDetector(
+      onTapDown: widget.enabled ? (_) => setState(() => _pressed = true) : null,
+      onTapCancel: widget.enabled
+          ? () => setState(() => _pressed = false)
+          : null,
+      onTapUp: widget.enabled ? (_) => setState(() => _pressed = false) : null,
+      onTap: widget.enabled ? widget.onPressed : null,
+      child: AnimatedScale(
+        duration: const Duration(milliseconds: 120),
+        scale: _pressed ? 0.95 : 1.0,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(28),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+            child: AnimatedOpacity(
+              duration: const Duration(milliseconds: 120),
+              opacity: (_pressed ? 0.9 : 1.0) * effectiveOpacity,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: AppColors.vibrantRed,
+                  borderRadius: BorderRadius.circular(28),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.08),
+                      blurRadius: 12,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
+                ),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(widget.icon, color: Colors.white, size: 20),
+                    const SizedBox(width: 8),
+                    Text(
+                      widget.label,
+                      style: const TextStyle(
+                        fontFamily: 'SF Pro Text',
+                        fontWeight: FontWeight.w600,
+                        fontSize: 15,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

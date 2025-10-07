@@ -6,12 +6,22 @@ Future<void> main() async {
   print('== Inventory: Hive Boxes ==');
   try {
     await Hive.initFlutter();
-    for (final name in ['userBox','sessionBox','exerciseSetBox','workoutPlanBox','sessionRuntimeBox','mealBox','sensorSampleBox']) {
+    for (final name in [
+      'userBox',
+      'sessionBox',
+      'exerciseSetBox',
+      'workoutPlanBox',
+      'sessionRuntimeBox',
+      'mealBox',
+      'sensorSampleBox',
+    ]) {
       try {
         if (!Hive.isBoxOpen(name)) {
           await Hive.openBox(name);
         }
-        print('Hive box: $name (entries: ' + Hive.box(name).length.toString() + ')');
+        print(
+          'Hive box: $name (entries: ' + Hive.box(name).length.toString() + ')',
+        );
       } catch (_) {
         print('Hive box: $name (unavailable)');
       }

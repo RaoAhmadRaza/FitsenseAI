@@ -28,37 +28,47 @@ void main() {
       final now = DateTime.now();
       final startOfToday = DateTime(now.year, now.month, now.day);
       // Today completed: 1800s
-      await sessionBox.add(WorkoutSession(
-        workoutId: 't1',
-        date: startOfToday.add(const Duration(hours: 1)),
-        durationSeconds: 1800,
-        progress: const [],
-        completed: true,
-      ));
+      await sessionBox.add(
+        WorkoutSession(
+          workoutId: 't1',
+          date: startOfToday.add(const Duration(hours: 1)),
+          durationSeconds: 1800,
+          progress: const [],
+          completed: true,
+        ),
+      );
       // Today ongoing: 600s (should not count in completed minutes)
-      await sessionBox.add(WorkoutSession(
-        workoutId: 't2',
-        date: startOfToday.add(const Duration(hours: 2)),
-        durationSeconds: 600,
-        progress: const [],
-        completed: false,
-      ));
+      await sessionBox.add(
+        WorkoutSession(
+          workoutId: 't2',
+          date: startOfToday.add(const Duration(hours: 2)),
+          durationSeconds: 600,
+          progress: const [],
+          completed: false,
+        ),
+      );
       // Yesterday completed: 3600s
-      await sessionBox.add(WorkoutSession(
-        workoutId: 'y1',
-        date: startOfToday.subtract(const Duration(days: 1)).add(const Duration(hours: 3)),
-        durationSeconds: 3600,
-        progress: const [],
-        completed: true,
-      ));
+      await sessionBox.add(
+        WorkoutSession(
+          workoutId: 'y1',
+          date: startOfToday
+              .subtract(const Duration(days: 1))
+              .add(const Duration(hours: 3)),
+          durationSeconds: 3600,
+          progress: const [],
+          completed: true,
+        ),
+      );
       // 8 days ago completed: 600s (outside 7-day window)
-      await sessionBox.add(WorkoutSession(
-        workoutId: 'old1',
-        date: startOfToday.subtract(const Duration(days: 8)),
-        durationSeconds: 600,
-        progress: const [],
-        completed: true,
-      ));
+      await sessionBox.add(
+        WorkoutSession(
+          workoutId: 'old1',
+          date: startOfToday.subtract(const Duration(days: 8)),
+          durationSeconds: 600,
+          progress: const [],
+          completed: true,
+        ),
+      );
     });
 
     tearDown(() async {
@@ -77,8 +87,16 @@ void main() {
 
     test('last 7 days', () async {
       final now = DateTime.now();
-      final start = DateTime(now.year, now.month, now.day).subtract(const Duration(days: 6));
-      final end = DateTime(now.year, now.month, now.day).add(const Duration(days: 1));
+      final start = DateTime(
+        now.year,
+        now.month,
+        now.day,
+      ).subtract(const Duration(days: 6));
+      final end = DateTime(
+        now.year,
+        now.month,
+        now.day,
+      ).add(const Duration(days: 1));
       final minutes = await repo.getTotalMinutes(from: start, to: end);
       expect(minutes, 90); // today 30m + yesterday 60m
     });

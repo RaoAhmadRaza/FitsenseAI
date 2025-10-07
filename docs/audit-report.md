@@ -146,3 +146,154 @@ See `docs/dfd.mmd` (Mermaid) for data flows between device, Firebase Auth, and l
 - Phase 1 (1–2 weeks): Extend encryption to additional stores; implement data deletion/export; add telemetry.
 - Phase 2 (2–6 weeks): Add pre-commit hooks, branch protections, dependency pinning.
 - Phase 3 (1–3 months): Mature observability, SLOs, and compliance docs.
+
+## Scope & Methodology
+
+In scope:
+
+- Flutter application code under `lib/`, tests under `test/`, project configs, and assets.
+- Local persistence layers (Hive, SQLite) and Firebase client configuration.
+- CI/CD within this repository.
+
+Out of scope (assessed qualitatively where applicable):
+
+- Firebase project configuration and security rules in the console (recommendations included).
+- Third-party service backends not present in this repo.
+
+Methods used:
+
+- Static review of code and configurations, targeted searches over the codebase.
+- Creation of automated scans: Semgrep, OSV dependency scan, and secrets scans.
+- Light threat modeling focused on client data flows and auth.
+
+## Security Controls Matrix (summary)
+
+- Authentication: Firebase Auth (Google/Apple) on client; recommend enforcing MFA for admins and OAuth client/package/SHA restrictions.
+- Authorization: No custom backend; depends on Firebase rules if Firestore/Storage are used later.
+- Data at rest: Hive user box encrypted (this audit); SQLite not encrypted (recommend SQLCipher/column crypto).
+- Data in transit: No custom HTTP clients; Firebase SDKs use HTTPS.
+- Secrets management: Client configs committed (expected); add detect-secrets baseline and CI enforcement.
+- CI/CD: Workflow added for analysis, tests, and scans.
+- Logging/Observability: Minimal; recommend Crashlytics/Sentry and redaction.
+- Dependency hygiene: OSV scanning configured in CI; consider pinning critical packages.
+
+## Deliverables and Evidence
+
+- Report: `docs/audit-report.md` (this file)
+- Findings: `docs/findings.csv`
+- DFD: `docs/dfd.mmd`
+- CI workflow: `.github/workflows/security-audit.yml`
+- Local scan script: `scripts/run-audit.sh`
+- Semgrep rules: `.semgrep/semgrep.yml`
+- Inventory utility: `tool/inventory.dart`
+- Commit introducing these artifacts: see repository history (short SHA: 367e044)
+
+## How to Run Scans Locally
+
+Prereqs: Flutter SDK and Python 3 available.
+
+Run the helper script from the repo root:
+
+```bash
+bash scripts/run-audit.sh
+```
+
+Optional: configure `SEMGREP_APP_TOKEN` in your shell to use Semgrep Cloud features.
+
+## Sign-off
+
+This audit provides an actionable baseline for a client-only Flutter app with Firebase Auth and local storage. The most impactful next steps are: encrypting SQLite or sensitive columns, enabling CI security gates end-to-end (with a maintained secrets baseline), and hardening Firebase project rules and OAuth restrictions. Implementing crash reporting and minimal analytics will materially improve detection and response.
+
+## Appendix: SQLite Encryption Guide (SQLCipher or Column-Level Crypto)
+
+Your app uses `sqflite` for persistence; by default it is not encrypted. You have two viable paths to add encryption:
+
+1) Full-Database Encryption (SQLCipher)
+
+Encrypts the entire DB file on disk with AES-256 so a copied `fitsense.db` is unreadable.
+
+- Switch to SQLCipher
+
+  In `pubspec.yaml`, replace sqflite with:
+
+  ```yaml
+  dependencies:
+    sqflite_sqlcipher: ^2.3.0
+  ```
+
+  Remove `sqflite` to avoid conflicts (API is drop-in compatible).
+
+- Generate/Store an Encryption Key
+
+  Use `flutter_secure_storage` to store a random key bound to the OS keystore:
+
+  ```dart
+  import 'dart:convert';
+  import 'dart:math';
+  import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+
+  final storage = const FlutterSecureStorage();
+  var key = await storage.read(key: 'db_key');
+  if (key == null) {
+    final random = List<int>.generate(32, (_) => Random.secure().nextInt(256));
+    key = base64UrlEncode(random); // store URL-safe base64
+    await storage.write(key: 'db_key', value: key);
+  }
+  final dbPassword = key; // pass this string to SQLCipher
+  ```
+
+- Open Encrypted Database
+
+  In `lib/core/db/app_database.dart`, import SQLCipher and pass the password:
+
+  ```dart
+  import 'package:sqflite_sqlcipher/sqflite.dart';
+
+  final db = await openDatabase(
+    path,
+    password: dbPassword,
+    version: 2,
+    onCreate: _createSchema,
+    onUpgrade: _onUpgrade,
+  );
+  ```
+
+- Handle Old Databases (Migration)
+
+  Options:
+
+  - Early-stage: detect an existing unencrypted DB and recreate it encrypted (rehydrate user profile from Hive if needed).
+  - Export/import: open legacy DB without password, export rows, create encrypted DB, import rows table-by-table.
+
+- Verify on Device
+
+  ```bash
+  # After running the app once
+  adb shell run-as <your.package.name> cat databases/fitsense.db > fitsense.db
+  # Opening fitsense.db with sqlite3 should fail (ciphertext)
+  ```
+
+2) Column-Level Encryption (Alternative)
+
+Encrypt only sensitive fields while keeping SQLite unchanged.
+
+- Keep `sqflite`, reuse the keystore key, and wrap fields with encrypt/decrypt (example using the `encrypt` package):
+
+  ```dart
+  import 'package:encrypt/encrypt.dart' as enc;
+
+  final key = enc.Key.fromUtf8(dbPassword.padRight(32)); // 32 bytes
+  final iv = enc.IV.fromLength(16);
+  final encrypter = enc.Encrypter(enc.AES(key));
+
+  String encryptField(String text) => encrypter.encrypt(text, iv: iv).base64;
+  String decryptField(String base64) => encrypter.decrypt64(base64, iv: iv);
+  ```
+
+Trade-offs:
+
+- ✅ Simpler migration; you can keep the existing DB.
+- ❌ Schema/indexes and non-sensitive columns remain plaintext.
+- ❌ Requires wrapping for every read/write site.
+
+Recommendation for FitsenseAI: adopt SQLCipher (whole-DB protection), store the password only in `flutter_secure_storage`, and choose migration strategy based on your current install base.

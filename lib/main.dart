@@ -37,6 +37,7 @@ import 'features/workout/pages/session_summary_screen.dart';
 import 'core/db/session_index.dart';
 import 'core/models/meal_entry.dart';
 import 'core/models/sensor_sample.dart';
+import 'features/audit/pages/audit_dashboard_screen.dart';
 
 // Global user info (populated after sign-in)
 String? gUserUid;
@@ -327,6 +328,7 @@ class _RootAppState extends State<_RootApp> with WidgetsBindingObserver {
         AppRoutes.sensors: (_) => const SensorDemoPage(),
         AppRoutes.plans: (_) => const PlanBrowserScreen(),
         AppRoutes.history: (_) => const HistoryPlaceholder(),
+        '/audit': (_) => const AuditDashboardScreen(),
       },
       onGenerateRoute: (settings) {
         final name = settings.name ?? '';

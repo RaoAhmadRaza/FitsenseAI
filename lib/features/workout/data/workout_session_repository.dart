@@ -75,7 +75,7 @@ class WorkoutSessionRepository {
   }
 
   // getOngoingSession implemented below to backfill SQLite rowId mapping
-  
+
   // Ensure we have a SQLite rowId mapping for a given session (best-effort, non-blocking call sites can unawait).
   Future<void> _ensureRowMapping(WorkoutSession s) async {
     try {
@@ -99,6 +99,7 @@ class WorkoutSessionRepository {
     }
     return s;
   }
+
   Future<WorkoutSession?> getLastCompletedSession() async =>
       getLastCompletedSessionSync();
 

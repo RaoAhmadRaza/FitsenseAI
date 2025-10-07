@@ -20,6 +20,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:lottie/lottie.dart';
 import 'core/utils/formatters.dart';
 import 'core/navigation/app_navigator.dart';
+import 'features/altrix/pages/altrix_chat_page.dart';
 import 'main.dart'
     show
         gUserUid,
@@ -238,63 +239,94 @@ class _HomeTab extends StatelessWidget {
                     ),
                   ),
                 ),
-              Container(
-                height: 50,
-                width: 370,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  border: Border.all(color: Colors.grey.shade300),
-                  borderRadius: BorderRadius.circular(70),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.start,
-                  children: [
-                    const SizedBox(width: 10),
-                    Lottie.network(
-                      'https://lottie.host/2d58d506-a04c-4354-b6ed-b03812317093/5fPPvtbClc.json',
-                      width: 40,
-                      height: 40,
-                    ),
-                    const SizedBox(width: 10),
-                    const Text(
-                      'Ask',
-                      style: TextStyle(
-                        color: Colors.grey,
-                        fontSize: 12,
-                        fontWeight: FontWeight.normal,
-                        decoration: TextDecoration.none,
+              GestureDetector(
+                onTap: () {
+                  Navigator.of(context).push(
+                    PageRouteBuilder(
+                      pageBuilder: (context, animation, secondaryAnimation) =>
+                          const AltrixChatPage(),
+                      transitionDuration: const Duration(milliseconds: 280),
+                      reverseTransitionDuration: const Duration(
+                        milliseconds: 240,
                       ),
+                      transitionsBuilder:
+                          (context, animation, secondaryAnimation, child) {
+                            final curved = CurvedAnimation(
+                              parent: animation,
+                              curve: Curves.easeOutCubic,
+                              reverseCurve: Curves.easeInCubic,
+                            );
+                            return SlideTransition(
+                              position: curved.drive(
+                                Tween<Offset>(
+                                  begin: const Offset(1.0, 0.0),
+                                  end: Offset.zero,
+                                ),
+                              ),
+                              child: child,
+                            );
+                          },
                     ),
-                    const SizedBox(width: 3),
-                    const Text(
-                      'Altrix',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontFamily: 'Sora',
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black,
+                  );
+                },
+                child: Container(
+                  height: 50,
+                  width: 370,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    border: Border.all(color: Colors.grey.shade300),
+                    borderRadius: BorderRadius.circular(70),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.start,
+                    children: [
+                      const SizedBox(width: 10),
+                      Lottie.network(
+                        'https://lottie.host/2d58d506-a04c-4354-b6ed-b03812317093/5fPPvtbClc.json',
+                        width: 40,
+                        height: 40,
                       ),
-                    ),
-                    const SizedBox(width: 3),
-                    const Text(
-                      'for.....',
-                      style: TextStyle(
-                        color: Colors.grey,
-                        fontSize: 12,
-                        fontWeight: FontWeight.normal,
-                        decoration: TextDecoration.none,
+                      const SizedBox(width: 10),
+                      const Text(
+                        'Ask',
+                        style: TextStyle(
+                          color: Colors.grey,
+                          fontSize: 12,
+                          fontWeight: FontWeight.normal,
+                          decoration: TextDecoration.none,
+                        ),
                       ),
-                    ),
-                    const Spacer(),
-                    const Padding(
-                      padding: EdgeInsets.only(right: 16.0),
-                      child: Icon(
-                        FontAwesomeIcons.microphoneAlt,
-                        color: Colors.grey,
-                        size: 16,
+                      const SizedBox(width: 3),
+                      const Text(
+                        'Altrix',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontFamily: 'Sora',
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black,
+                        ),
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 3),
+                      const Text(
+                        'for.....',
+                        style: TextStyle(
+                          color: Colors.grey,
+                          fontSize: 12,
+                          fontWeight: FontWeight.normal,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                      const Spacer(),
+                      const Padding(
+                        padding: EdgeInsets.only(right: 16.0),
+                        child: Icon(
+                          FontAwesomeIcons.microphoneAlt,
+                          color: Colors.grey,
+                          size: 16,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
               const SizedBox(height: 25),

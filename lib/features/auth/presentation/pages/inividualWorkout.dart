@@ -56,6 +56,8 @@ class _InividualworkoutState extends State<Inividualworkout> {
   bool _rehydrated = false; // prevent duplicate rehydration
   SessionRuntime? _runtime;
   bool _actionInFlight = false; // prevent double taps
+  // UI-only toggle for the top-right pause/resume icon.
+  bool _headerPaused = false;
 
   @override
   void initState() {
@@ -384,6 +386,8 @@ class _InividualworkoutState extends State<Inividualworkout> {
             final runtime = session != null
                 ? context.read<SessionCubit>().getRuntime(session.workoutId)
                 : null;
+            // Derive header paused state from runtime when available to avoid drift.
+            final bool headerPaused = runtime?.paused ?? _headerPaused;
             final planId = runtime?.planId;
             final activeIndex =
                 runtime?.currentExerciseIndex ?? currentExercise;
@@ -437,11 +441,81 @@ class _InividualworkoutState extends State<Inividualworkout> {
                               fontSize: 16,
                             ),
                           ),
-                          const SizedBox(width: 40), // Balance the row
+                          // Top-right pause/resume button (wired to backend)
+                          Semantics(
+                            button: true,
+                            label: headerPaused
+                                ? 'Resume workout'
+                                : 'Pause workout',
+                            child: ElevatedButton(
+                              onPressed: () {
+                                final cubit = context.read<SessionCubit>();
+                                if (!headerPaused) {
+                                  // Pause
+                                  setState(() => _headerPaused = true);
+                                  // Stop local exercise timer; backend persists pause in runtime
+                                  exerciseTimer?.cancel();
+                                  cubit.pauseSession(); // fire-and-forget
+                                } else {
+                                  // Resume
+                                  setState(() => _headerPaused = false);
+                                  // Resume backend session, then sync local timer baseline
+                                  cubit.resumeSession().then((_) {
+                                    // Safely read runtime without reusing context
+                                    final s = cubit.state.ongoing;
+                                    if (s != null) {
+                                      final rt = cubit.getRuntime(s.workoutId);
+                                      if (rt != null) {
+                                        final base =
+                                            rt.accumulatedExerciseSeconds;
+                                        if ((minutes * 60 + seconds) != base) {
+                                          if (mounted) {
+                                            setState(() {
+                                              minutes = base ~/ 60;
+                                              seconds = base % 60;
+                                            });
+                                          }
+                                        }
+                                      }
+                                    }
+                                    // Restart passive timer and reflect exercising state for UI
+                                    if (mounted) {
+                                      setState(() {
+                                        if (currentState !=
+                                            WorkoutState.resting) {
+                                          currentState =
+                                              WorkoutState.exercising;
+                                        }
+                                        exerciseTimer?.cancel();
+                                        _startPassiveTimer();
+                                      });
+                                    }
+                                  });
+                                }
+                              },
+                              style: ElevatedButton.styleFrom(
+                                shape: const CircleBorder(),
+                                padding: EdgeInsets.zero,
+                                minimumSize: const Size(48, 48),
+                                maximumSize: const Size(56, 56),
+                                elevation: 3,
+                                shadowColor: Colors.black,
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                backgroundColor: Colors.white,
+                              ),
+                              child: Icon(
+                                headerPaused
+                                    ? Icons.play_arrow_rounded
+                                    : Icons.pause_rounded,
+                                color: Colors.black,
+                                size: 22,
+                              ),
+                            ),
+                          ),
                         ],
                       ),
 
-                      const SizedBox(height: 30),
+                      const SizedBox(height: 10),
 
                       // Dynamic title based on state
                       Text(
@@ -461,8 +535,8 @@ class _InividualworkoutState extends State<Inividualworkout> {
 
                       // Exercise GIF container
                       Container(
-                        height: 300,
-                        width: 300,
+                        height: 250,
+                        width: 250,
                         decoration: BoxDecoration(
                           color: Colors.white,
                           borderRadius: BorderRadius.circular(20),

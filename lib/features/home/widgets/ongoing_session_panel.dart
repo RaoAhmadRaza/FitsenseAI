@@ -17,7 +17,7 @@ class OngoingSessionPanel extends StatefulWidget {
 }
 
 class _OngoingSessionPanelState extends State<OngoingSessionPanel> {
-  bool dismissedRecovery = false;
+  // Recovery banner removed permanently.
 
   @override
   Widget build(BuildContext context) {
@@ -27,35 +27,7 @@ class _OngoingSessionPanelState extends State<OngoingSessionPanel> {
             (state.ongoing != null && !state.ongoing!.completed)
             ? state.ongoing
             : null;
-        final showRecovery =
-            state.recovered && ongoing != null && !dismissedRecovery;
-        return Column(
-          children: [
-            if (showRecovery)
-              MaterialBanner(
-                backgroundColor: Colors.orange.shade50,
-                leading: const Icon(Icons.info_outline, color: Colors.orange),
-                content: const Text(
-                  'Recovered previous session. Continue where you left off?',
-                  style: TextStyle(color: Colors.black),
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: () => setState(() => dismissedRecovery = true),
-                    child: const Text('Dismiss'),
-                  ),
-                  TextButton(
-                    onPressed: () {
-                      setState(() => dismissedRecovery = true);
-                      AppNavigator.resumeSession(context, ongoing.workoutId);
-                    },
-                    child: const Text('Resume'),
-                  ),
-                ],
-              ),
-            _OngoingCard(ongoing: ongoing),
-          ],
-        );
+        return Column(children: [_OngoingCard(ongoing: ongoing)]);
       },
     );
   }

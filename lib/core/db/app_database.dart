@@ -66,20 +66,20 @@ class AppDatabase {
     }
 
     Future<Database> _openEncrypted() => openDatabase(
-          path,
-          password: passphrase,
-          version: _dbVersion,
-          onCreate: (db, version) async {
-            await _createSchema(db);
-          },
-          onUpgrade: (db, oldV, newV) async {
-            // Migration path (incremental, fall-through style if future versions added)
-            if (oldV < 2) {
-              // v2 adds workout plan normalization tables (pure additive)
-              await _createWorkoutPlanTables(db);
-            }
-          },
-        );
+      path,
+      password: passphrase,
+      version: _dbVersion,
+      onCreate: (db, version) async {
+        await _createSchema(db);
+      },
+      onUpgrade: (db, oldV, newV) async {
+        // Migration path (incremental, fall-through style if future versions added)
+        if (oldV < 2) {
+          // v2 adds workout plan normalization tables (pure additive)
+          await _createWorkoutPlanTables(db);
+        }
+      },
+    );
 
     try {
       _instance = await _openEncrypted();
