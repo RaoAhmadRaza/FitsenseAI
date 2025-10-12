@@ -46,6 +46,10 @@ dependencies:
   # UI helpers
   lottie: ^3.3.1 # later, optional for animations
   flutter_secure_storage: any # keystore-backed secure storage for Hive encryption keys
+  flutter_dotenv: ^5.1.0 # load env vars from .env during development
+  dio: ^5.7.0 # robust HTTP client with interceptors and cancelation
+  flutter_markdown: ^0.7.3 # render Markdown in chat bubbles
+  connectivity_plus: ^6.0.5 # network connectivity status for retry UX
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
@@ -108,6 +112,8 @@ flutter:
     - .github/workflows/security-audit.yml
     - .semgrep/semgrep.yml
     - scripts/run-audit.sh
+  # Do NOT bundle environment files; set secrets via --dart-define at build time.
+  # .env intentionally excluded from assets to avoid shipping secrets.
   #   - images/a_dot_ham.jpeg
 
   # An image asset can refer to one or more resolution-specific "variants", see

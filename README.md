@@ -252,6 +252,21 @@ Add a LICENSE file when finalized.
 Maintained as part of the FitSense AI initiative.
 
 ---
+
+## Secrets & API Keys (Gemini)
+
+- Do not bundle .env in assets. The app no longer reads .env from assets in release builds.
+- Preferred: pass the key at build/run time using a compile-time define and it will be persisted into the device keystore via flutter_secure_storage on first run.
+  - Define name: GEMINI_API_KEY
+  - The app reads secrets in this order: secure storage → --dart-define → dotenv (dev only).
+- For local development convenience, you may create a .env file in the project root with GEMINI_API_KEY=...; it is .gitignored and not bundled into release builds. The value is read only if present during development and then persisted into secure storage.
+- Key rotation: delete the stored key from secure storage to force re-read from --dart-define or .env on next launch.
+  - iOS/macOS: clearing app data removes secure storage entries; you can also implement a small settings toggle to wipe the stored key if needed.
+- Logging hygiene: network logging is reduced and API-key-like strings are redacted from error logs to avoid accidental leakage.
+
+CI/CD guidance:
+- Inject GEMINI_API_KEY via your CI’s secret manager and pass it as a build define.
+- Never commit keys; .env is .gitignored by default.
  
 ## Workout Interaction Components (New)
 

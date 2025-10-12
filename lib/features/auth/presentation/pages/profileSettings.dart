@@ -37,18 +37,18 @@ class ProfileSettings extends StatefulWidget {
 class _ProfileSettingsState extends State<ProfileSettings> {
   String _statsScope = 'all'; // 'today' | 'week' | 'all'
 
-  // Compute active streak (consecutive days up to today), total minutes and completed count
+  // Compute active streak (consecutive days up to today)
   int _computeStreak(Iterable<WorkoutSession> sessions) {
     final completedDates = sessions
         .where((s) => s.completed)
         .map((s) => DateTime(s.date.year, s.date.month, s.date.day))
         .toSet();
     int streak = 0;
-    DateTime cursor = DateTime.now();
-    DateTime curDay = DateTime(cursor.year, cursor.month, cursor.day);
-    while (completedDates.contains(curDay)) {
+    DateTime now = DateTime.now();
+    DateTime cur = DateTime(now.year, now.month, now.day);
+    while (completedDates.contains(cur)) {
       streak += 1;
-      curDay = curDay.subtract(const Duration(days: 1));
+      cur = cur.subtract(const Duration(days: 1));
     }
     return streak;
   }
@@ -57,14 +57,7 @@ class _ProfileSettingsState extends State<ProfileSettings> {
   int _computeCompletedCount(Iterable<WorkoutSession> sessions) =>
       sessions.where((s) => s.completed && _isWithinScope(s.date)).length;
 
-  // Removed old unindexed helpers (now using _scopedSecondsIndexed)
-
-  // Fast scoped seconds using session index for completed sessions; add ongoing from box.
-  // Note: superseded by the override-based variant below, but kept conceptually similar.
-  // Removed to avoid confusion; we use the override version for live ticking.
-
-  // Variant that uses an override for ongoing duration seconds when provided (from SessionCubit).
-  // This avoids relying solely on Hive box writes for the ongoing minutes to tick.
+  // Variant that uses an override for ongoing duration seconds when provided
   int _scopedSecondsIndexedWithOngoingOverride(
     Iterable<WorkoutSession> sessions,
     int? ongoingOverrideSeconds,
@@ -93,7 +86,7 @@ class _ProfileSettingsState extends State<ProfileSettings> {
           : (ongoingOverrideSeconds ?? ongoingList.first.durationSeconds);
       return completed + ongoing;
     }
-    // All time unchanged; includes ongoing when present
+    // All time
     return StatsService.secondsForScope(
       sessions,
       StatsScope.all,
@@ -529,6 +522,8 @@ class _ProfileSettingsState extends State<ProfileSettings> {
                 endIndent: 30,
               ),
 
+              // AI Companion Settings removed (moved to dedicated screen)
+
               // TODO: REMOVED_MEALS — Meal Plans section removed
               SizedBox(height: 30),
               TextButton(
@@ -555,3 +550,5 @@ class _ProfileSettingsState extends State<ProfileSettings> {
     );
   }
 }
+
+// (Settings UI moved to Altrix Settings screen)

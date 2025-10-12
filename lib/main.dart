@@ -7,6 +7,8 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:hive/hive.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'core/config/secrets.dart';
 
 import 'firebase_options.dart' as firebase_options;
 
@@ -38,6 +40,13 @@ import 'core/db/session_index.dart';
 import 'core/models/meal_entry.dart';
 import 'core/models/sensor_sample.dart';
 import 'features/audit/pages/audit_dashboard_screen.dart';
+// Altrix (chat) models for Hive adapter registration
+import 'features/altrix/models/altrix_message.dart';
+import 'features/altrix/models/altrix_thread.dart';
+import 'features/altrix/utils/altrix_constants.dart';
+// Altrix dev/validation pages
+import 'features/altrix/pages/altrix_repo_validator.dart';
+import 'features/altrix/pages/altrix_db_inspector.dart';
 
 // Global user info (populated after sign-in)
 String? gUserUid;
@@ -55,10 +64,21 @@ String? gUserPrimaryGoal; // one of goals (optional)
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Load environment variables (non-fatal if missing). Allows .env-free prod.
+  try {
+    await dotenv.load(fileName: '.env');
+  } catch (_) {}
   await Firebase.initializeApp(
     options: firebase_options.DefaultFirebaseOptions.currentPlatform,
   );
   await Hive.initFlutter();
+  // Register Altrix adapters early (idempotent guards)
+  if (!Hive.isAdapterRegistered(AltrixConstants.messageTypeId)) {
+    Hive.registerAdapter(AltrixMessageAdapter());
+  }
+  if (!Hive.isAdapterRegistered(AltrixConstants.threadTypeId)) {
+    Hive.registerAdapter(AltrixThreadAdapter());
+  }
   // Open (or create) a Hive box for user profile caching (encrypted)
   // We derive/store a 256-bit key in the platform keystore via flutter_secure_storage.
   final secureStorage = const FlutterSecureStorage();
@@ -89,6 +109,26 @@ void main() async {
       if (!Hive.isBoxOpen('userBox')) {
         await Hive.openBox('userBox', encryptionCipher: cipher);
       }
+    }
+  }
+
+  // Securely store GEMINI_API_KEY if provided via --dart-define or .env (dev only)
+  try {
+    final candidate = await Secrets.getGeminiApiKey();
+    await Secrets.persistGeminiKeyIfMissing(candidate);
+  } catch (_) {}
+
+  // Open a dedicated settings box (encrypted) for global, reactive toggles.
+  try {
+    if (!Hive.isBoxOpen('settingsBox')) {
+      await Hive.openBox('settingsBox', encryptionCipher: cipher);
+    }
+  } catch (_) {
+    // As last resort, ensure we have the box open unencrypted to avoid UI breakage.
+    if (!Hive.isBoxOpen('settingsBox')) {
+      try {
+        await Hive.openBox('settingsBox');
+      } catch (_) {}
     }
   }
 
@@ -329,6 +369,9 @@ class _RootAppState extends State<_RootApp> with WidgetsBindingObserver {
         AppRoutes.plans: (_) => const PlanBrowserScreen(),
         AppRoutes.history: (_) => const HistoryPlaceholder(),
         '/audit': (_) => const AuditDashboardScreen(),
+        // Developer utilities
+        '/altrix/validator': (_) => const AltrixRepoValidatorPage(),
+        '/altrix/db': (_) => const AltrixDbInspectorPage(),
       },
       onGenerateRoute: (settings) {
         final name = settings.name ?? '';

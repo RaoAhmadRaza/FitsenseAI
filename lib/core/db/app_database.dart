@@ -22,15 +22,19 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../../../main.dart' as globals;
 import '../../core/utils/logger.dart';
+import 'migrations_v4.dart';
 
 class AppDatabase {
   static const _dbName = 'fitsense.db';
   static const _dbVersion =
-      2; // Increment when altering schema (add migrations)
+      4; // Increment when altering schema (add migrations)
 
   // Tables
   static const tableUserProfile = 'user_profile';
   static const tableWorkouts = 'workouts';
+  // Altrix (chat) tables
+  static const tableAltrixThreads = 'altrix_threads';
+  static const tableAltrixMessages = 'altrix_messages';
   // New normalized session tracking tables (v1 additive; safe alongside legacy `workouts`).
   static const tableWorkoutSessions = 'workout_sessions';
   static const tableExerciseProgress = 'exercise_progress';
@@ -77,6 +81,14 @@ class AppDatabase {
         if (oldV < 2) {
           // v2 adds workout plan normalization tables (pure additive)
           await _createWorkoutPlanTables(db);
+        }
+        if (oldV < 3) {
+          // v3 adds Altrix chat tables
+          await _createAltrixTables(db);
+        }
+        if (oldV < 4) {
+          // v4 extends altrix_messages and altrix_threads with Gemini metadata
+          await migrateToV4(db);
         }
       },
     );
@@ -176,6 +188,8 @@ class AppDatabase {
     ''');
     // v2 tables (included on fresh install)
     await _createWorkoutPlanTables(db);
+    // v3 tables (included on fresh install)
+    await _createAltrixTables(db);
   }
 
   /// Create workout plan related tables (idempotent when called in migration path).
@@ -216,6 +230,37 @@ class AppDatabase {
         equipment TEXT NOT NULL,
         FOREIGN KEY(plan_id) REFERENCES $tableWorkoutPlans(id) ON DELETE CASCADE,
         UNIQUE(plan_id, equipment) ON CONFLICT IGNORE
+      );
+    ''');
+  }
+
+  /// Create Altrix chat tables (threads + messages)
+  static Future<void> _createAltrixTables(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS $tableAltrixThreads (
+        id TEXT PRIMARY KEY,
+        title TEXT,
+        created_at INTEGER,
+        updated_at INTEGER,
+        message_count INTEGER,
+        model TEXT,
+        prompt_count INTEGER,
+        avg_latency_ms REAL
+      );
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS $tableAltrixMessages (
+        id TEXT PRIMARY KEY,
+        thread_id TEXT,
+        role TEXT,
+        content TEXT,
+        created_at INTEGER,
+        status TEXT,
+        tokens_used INTEGER,
+        latency_ms INTEGER,
+        is_gemini_response INTEGER,
+        FOREIGN KEY(thread_id) REFERENCES $tableAltrixThreads(id)
       );
     ''');
   }
@@ -382,6 +427,104 @@ class AppDatabase {
 // =============================
 // Session CRUD Helpers (kept outside class for now? We integrate inside class for cohesion)
 // =============================
+
+extension AltrixSqlHelpers on AppDatabase {
+  static Future<void> upsertAltrixThread({
+    required String id,
+    required String title,
+    required DateTime createdAt,
+    required DateTime updatedAt,
+    required int messageCount,
+    String? model,
+    int? promptCount,
+    double? avgLatencyMs,
+  }) async {
+    final db = await AppDatabase.instance();
+    await db.insert(AppDatabase.tableAltrixThreads, {
+      'id': id,
+      'title': title,
+      'created_at': createdAt.millisecondsSinceEpoch,
+      'updated_at': updatedAt.millisecondsSinceEpoch,
+      'message_count': messageCount,
+      if (model != null) 'model': model,
+      if (promptCount != null) 'prompt_count': promptCount,
+      if (avgLatencyMs != null) 'avg_latency_ms': avgLatencyMs,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  static Future<void> insertAltrixMessage({
+    required String id,
+    required String threadId,
+    required String role,
+    required String content,
+    required DateTime createdAt,
+    String? status,
+    int? tokensUsed,
+    int? latencyMs,
+    bool? isGeminiResponse,
+  }) async {
+    final db = await AppDatabase.instance();
+    await db.insert(AppDatabase.tableAltrixMessages, {
+      'id': id,
+      'thread_id': threadId,
+      'role': role,
+      'content': content,
+      'created_at': createdAt.millisecondsSinceEpoch,
+      'status': status,
+      'tokens_used': tokensUsed,
+      'latency_ms': latencyMs,
+      'is_gemini_response': isGeminiResponse == null
+          ? null
+          : (isGeminiResponse ? 1 : 0),
+    }, conflictAlgorithm: ConflictAlgorithm.ignore);
+  }
+
+  static Future<void> deleteAltrixThreadCascade(String id) async {
+    final db = await AppDatabase.instance();
+    final batch = db.batch();
+    batch.delete(
+      AppDatabase.tableAltrixMessages,
+      where: 'thread_id = ?',
+      whereArgs: [id],
+    );
+    batch.delete(
+      AppDatabase.tableAltrixThreads,
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    await batch.commit(noResult: true);
+  }
+
+  static Future<List<Map<String, Object?>>> listAltrixThreads() async {
+    final db = await AppDatabase.instance();
+    return db.query(AppDatabase.tableAltrixThreads, orderBy: 'updated_at DESC');
+  }
+
+  static Future<Map<String, Object?>?> getAltrixThreadById(String id) async {
+    final db = await AppDatabase.instance();
+    final rows = await db.query(
+      AppDatabase.tableAltrixThreads,
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return rows.first;
+  }
+
+  static Future<int> updateAltrixMessageStatus({
+    required String id,
+    required String status,
+  }) async {
+    final db = await AppDatabase.instance();
+    return db.update(
+      AppDatabase.tableAltrixMessages,
+      {'status': status},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+}
 
 extension WorkoutSessionSqlHelpers on AppDatabase {
   static Future<int> insertWorkoutSession({

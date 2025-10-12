@@ -5,7 +5,7 @@ Repo: FitsenseAI (branch: main)
 
 ## Executive Summary
 
-Overall risk posture: Medium. This project is primarily a Flutter client with local storage (Hive + SQLite) and Firebase Auth integration. There is no custom server backend in this repository. Key exposures center on client-side handling of PII (profile data) at rest, lack of CI/CD security gates, and committed cloud configuration files (Firebase) which are not secrets but still require strict backend-side rules. No API servers, IaC, or container images were found in the repo.
+Overall risk posture: Medium. This project is primarily a Flutter client with local     1storage (Hive + SQLite) and Firebase Auth integration. There is no custom server backend in this repository. Key exposures center on client-side handling of PII (profile data) at rest, lack of CI/CD security gates, and committed cloud configuration files (Firebase) which are not secrets but still require strict backend-side rules. No API servers, IaC, or container images were found in the repo.
 
 Top 5 issues and quick remediation:
 
