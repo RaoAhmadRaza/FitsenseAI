@@ -266,9 +266,9 @@ CI includes:
 - dependency install,
 - `flutter analyze`,
 - test execution,
-- OSV vulnerability scanning,
-- Semgrep static security scanning,
-- detect-secrets checks.
+- OSV vulnerability scanning (dependency CVE/advisory checks),
+- Semgrep static security scanning (code-pattern security linting),
+- detect-secrets checks (secret leakage detection in source).
 
 ---
 
