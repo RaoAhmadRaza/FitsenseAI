@@ -1,637 +1,361 @@
 <div align="center">
 
-# FitSense AI – Intelligent Fitness Companion  
+# FitSense AI
 
-Personalized, privacy-aware fitness onboarding & authentication experience built with Flutter, Firebase Auth, Hive local persistence, and a clean BLoC architecture foundation.  
+**A privacy-conscious Flutter fitness companion with deterministic workout sessions, resilient local persistence, and an extensible architecture for intelligent coaching.**
 
-![Platforms](https://img.shields.io/badge/platform-iOS%20|%20Android%20|%20Web%20|%20Desktop-blue) 
-![State](https://img.shields.io/badge/state-BLoC-green) 
-![Firebase](https://img.shields.io/badge/backend-Firebase%20Auth-orange)  
+![Platform](https://img.shields.io/badge/platform-Flutter-02569B?logo=flutter&logoColor=white)
+![State](https://img.shields.io/badge/state-BLoC-3DDC84)
+![Auth](https://img.shields.io/badge/auth-Firebase%20Auth-FFCA28)
+![Storage](https://img.shields.io/badge/storage-Hive%20%2B%20SQLite-7E57C2)
 
 </div>
 
 ---
 
 ## Table of Contents
-1. Vision & Scope  
-2. Features (Implemented)  
-3. Architecture Overview  
-4. Data & Persistence  
-5. Project Structure  
-6. Local Development & Setup  
-7. Quality & Next Steps  
-8. License  
+
+- [What is FitSense AI?](#what-is-fitsense-ai)
+- [Current Capabilities](#current-capabilities)
+- [Architecture at a Glance](#architecture-at-a-glance)
+- [Project Structure](#project-structure)
+- [Getting Started](#getting-started)
+- [Configuration & Secrets](#configuration--secrets)
+- [Quality, Testing, and Security Checks](#quality-testing-and-security-checks)
+- [Workout Session Model](#workout-session-model)
+- [Key Documentation](#key-documentation)
+- [Roadmap](#roadmap)
+- [Troubleshooting](#troubleshooting)
+- [License](#license)
 
 ---
 
-## 1. Vision & Scope
-Provide a frictionless, privacy-aware fitness entry point.  
-Current scope: robust authentication lifecycle, session restoration, and persistence foundations.  
-Next steps: workout logging, rep counting, adaptive recommendations, and AI-driven coaching.
+## What is FitSense AI?
+
+FitSense AI is a cross-platform Flutter app focused on fitness onboarding and plan-driven workout execution.
+
+The project is currently centered on:
+
+- a polished authentication and onboarding flow,
+- deterministic workout/session identifiers for traceability,
+- resilient local data handling with Hive + SQLite mirroring,
+- accessibility-friendly workout interactions,
+- and security-first foundation work (secrets handling, audit scripts, CI scanning).
+
+It is designed to evolve toward AI-assisted coaching, deeper analytics, and optional cloud sync.
 
 ---
 
-## 2. Features (Implemented)
+## Current Capabilities
 
-### UI / Experience
-- Multi-stage welcome flow (Landing → Auth → Greeting) with entry animations.  
-- Google & Apple sign-in (staggered button reveal).  
-- Personalized greeting (first-name fallback to “Friend”).  
-- Lottie animation on greeting screen.  
-- Sensor demo screen (`/sensors`) streaming accelerometer + gyroscope.  
+### ✅ Implemented
 
-### Architecture & Logic
-- BLoC (`AuthBloc`) orchestrates auth lifecycle.  
-- Firebase `authStateChanges` mirrored as bloc events.  
-- Hive for fast warm start; SQLite for extended profile/workout groundwork.  
-- Fail-soft approach: persistence/cache errors never block UI.  
+- **Authentication stack**
+  - Firebase Auth initialization
+  - Google Sign-In and Apple Sign-In pathways
+  - authenticated/unauthenticated routing with BLoC state
 
-### Plan-Driven Workout Sessions (Wave Additions)
+- **Workout plan + session flow**
+  - plan browser and plan detail screens
+  - deterministic `workoutId` and `exerciseId` generation
+  - plan seeding into active session progress
+  - reps/sets progression with per-set persistence
 
-Deterministic session & exercise identifiers + queued progression logic enabling reliable resume, analytics correlation, and future deep-linking.
+- **Session lifecycle and recovery**
+  - ongoing session tracking
+  - pause/resume lifecycle hooks
+  - stale/incomplete session handling
+  - summary screen for completed sessions
 
-ID Scheme:
+- **Persistence layer**
+  - Hive boxes for fast app startup and responsive state
+  - SQLite mirror for structured querying and long-term analytics groundwork
+  - secure storage integration for encryption key handling
 
-```text
-workoutId: plan_<planId>_<epochMillis>
-exerciseId: plan_<planId>ex<index>    (index = 1-based position within plan)
-```
+- **Developer-facing quality tools**
+  - test suite around session/workout behavior
+  - security audit script and CI workflow for static/security checks
 
-Session Flow:
+### 🛠 In Progress / Planned
 
-```text
-Select Plan -> startPlanSession(plan) -> seed ExerciseProgress queue
-  -> startExercise(first) -> incrementRep()/completeSet() loop
-    -> on last set of exercise: startExercise(next) OR completeSession()
-      -> navigate to sessionSummary(workoutId)
-```
-
-Recovery & Resume:
-
-- Queue persisted (Hive) via `WorkoutSession` + `ExerciseProgress` entries.
-- Incomplete session can be resumed by reconstructing active exercise from persisted progress (current exercise = first with uncompleted sets).
-- Parsing helpers: `_parseExerciseIndex(exerciseId)` & `extractPlanIdFromWorkoutId()` ensure robust reverse mapping.
-
-Edge Handling:
-
-- Starting a new plan auto-completes lingering incomplete session to avoid multi-session ambiguity.
-- Missing / corrupt progress entries are recreated on the fly (fail-soft) so the user never loses the ability to proceed.
-
-Accessibility Enhancements:
-
-- Live region updates for rep counting (announce increment & set completion).
-- Focus shifts to next exercise card upon transition for screen reader continuity.
-
-Future Enhancements (Planned):
-
-- Real-time motion-based rep detection feeding `incrementRep`.
-- Pause / resume states with wall-clock drift reconciliation.
-- Deep link: `ai-fit://workout/<workoutId>` opens active or summary view.
+- richer motion-based rep intelligence from sensor streams
+- deep-link lifecycle completion (`ai-fit://...` flows)
+- expanded analytics and observability
+- cloud sync and conflict resolution strategy
 
 ---
 
-## 3. Architecture Overview
+## Architecture at a Glance
 
 ```text
-Presentation (Widgets)
-  -> State (BLoC: AuthBloc)
-    -> Repository (AuthRepository over FirebaseAuth + providers)
-      -> External Services (Firebase, Google Sign-In, Apple Sign-In)
-
-Persistence:
-  Hive (session cache)
-  SQLite (profile/workouts groundwork)
-Principles: minimal now, extensible later, resilience by design.
-
-## 2b. Routing Map (Wave Additions)
-
-Centralized in `lib/core/navigation/app_routes.dart`.
-
-| Route Helper / Name | Pattern | Purpose |
-| ------------------- | ------- | ------- |
-| AppRoutes.home | /home | Post-auth home/dashboard (placeholder) |
-| AppRoutes.plans | /plans | Browse available workout plans |
-| AppRoutes.planDetail(planId) | /plans/<planId> | Detail + Start action for specific plan |
-| AppRoutes.workout(sessionId) | /workout/<sessionId> | Active workout session (progress UI) |
-| AppRoutes.sessionSummary(sessionId) | /session/summary/<sessionId> | Post-session metrics & completion summary |
-| AppRoutes.history | /history | (Placeholder) Historical sessions list |
-| AppRoutes.profile | /profile | User profile / settings (placeholder) |
-| AppRoutes.sensors | /sensors | Sensor demo / motion telemetry sandbox |
-
-Notes:
-
-- Dynamic segments (<planId>, <sessionId>) are currently string-based and validated lazily when accessed.
-- Deterministic IDs allow future server reconciliation & shareable links.
-- Migration path: adopt `go_router` for guarded routes + web URL sync.
-
-Deep Link Examples (Future):
-
-```text
-ai-fit://plans/strength_beginner      -> plan detail screen
-ai-fit://workout/plan_push_1726500000 -> resume or summary depending on completion
+UI (Flutter Widgets)
+  -> State (Bloc/Cubit)
+    -> Repositories
+      -> Data Sources
+         - Firebase Auth
+         - Hive (fast local cache/state)
+         - SQLite (structured persistence/mirroring)
 ```
 
-## 2c. Analytics Hook Points
+### Main logical modules
 
-Instrumentation TODOs placed inline for future analytics layer integration. Each entry identifies the semantic event to emit.
+- `AuthBloc` for auth lifecycle and routing decisions
+- `SessionCubit` for workout progression, timing, pause/resume, recovery
+- `WorkoutsCubit` for plan catalog loading/state
+- repositories for auth, plans, and workout session persistence
 
-| Location (File:Line approx) | Event Template | Description |
-| --------------------------- | -------------- | ----------- |
-| main.dart: deep link handler | deep_link_open(uri) | App opened or navigated via deep link |
-| plan_detail_screen.dart | plan_start(planId) | User initiated a plan session |
-| session_cubit.dart (startPlanSession) | session_started(workoutId) | New workout session seeded |
-| session_cubit.dart (startExercise) | exercise_start(exerciseId) | Exercise becomes active |
-| session_cubit.dart (completeSet) | set_complete(exerciseId,setIndex) | User completed a set |
-| session_cubit.dart (completeSession) | session_complete(workoutId) | User finished entire session |
-| inividualWorkout.dart (legacy flow) | session_complete(planSession=planId) | Legacy screen session completion |
-| inividualWorkout.dart (legacy flow) | session_complete(legacySession) | Non-plan / legacy completion fallback |
-| Session pause action (SessionCubit.pauseSession) | pause_session(workoutId) | User paused an active session |
-| Session resume action (SessionCubit.resumeSession) | resume_session(workoutId) | User resumed a paused session |
-| Rest start (set completion handler) | rest_started(exerciseId,setIndex) | User entered timed rest after completing a set |
-| Rest skip (Skip Rest button) | rest_skipped(exerciseId,setIndex) | User skipped/short-circuited a rest period |
-| Recovery banner shown (OngoingSessionPanel) | recovery_banner_shown(workoutId,ageSeconds) | Incomplete session detected and surfaced |
-| Recovery banner dismiss (Resume / Dismiss) | recovery_banner_dismissed(workoutId,action) | User resumed or dismissed recovery prompt |
-| Navigation helper start plan | plan_start(planId) | User initiated plan via AppNavigator |
-| Navigation helper start workout | workout_start(workoutId) | Deterministic workout session lifecycle init |
+### Navigation model
 
-Planned Analytics Layer:
+Defined in `lib/core/navigation/app_routes.dart`:
 
-- Thin abstraction (e.g., `Analytics.log(eventName, params)`) with compile-time noop stub when disabled.
-- Consent gate surfaced in profile/settings (persisted preference).
-- Batched dispatch (timers) to minimize network chatter; offline queue in Hive.
-
-Privacy Considerations:
-
-- Avoid raw PII (no names/emails). Use stable anonymous user id.
-- Weight reps/time data treated as optional & purgable upon user delete request.
-- Provide export + delete functions aligned with roadmap.
-
-4. Data & Persistence
-Hive (Session Cache)
-Stores: uid, email, displayName, photoUrl, lastLogin.
-
-SQLite (Structured)
-user_profile → singleton row for extended fields.
-
-workouts → reserved for logging & analytics.
-
-Workout Sessions (NEW)
-- Hive box: `sessionBox` storing serialized `WorkoutSession` objects (fast lookup for ongoing + last completed).
-- Models: `WorkoutSession` (workoutId, date, durationSeconds, progress[], completed) & `ExerciseProgress` (exerciseId, completedSets, completedReps, usedWeight, timeSpentSeconds).
-- SQLite mirror tables: `workout_sessions`, `exercise_progress` (additive; legacy `workouts` table left untouched) + `exercise_sets` (fine-grained per-set; unique(session_id, exercise_id, set_index)).
-- Repository: `WorkoutSessionRepository` (startSession, updateDuration, upsertExerciseProgress, completeSession, getOngoing, getLastCompleted, addExerciseSet) writes Hive first then mirrors to SQLite best-effort.
-- SessionCubit now wired minimally to home Ongoing Workout panel (reactive duration + resume action).
-- Invariant: Only one ongoing (completed = false) session retained; starting a new session auto-completes any lingering one to avoid drift.
-- Duration ticker: `SessionCubit` runs a 5s periodic timer to increment `durationSeconds` for the ongoing session (best-effort, paused when no session) PLUS reconciliation on refresh (wall-clock recompute) to correct drift.
-- Per-set granularity: `ExerciseSet` model (Hive `exerciseSetBox`, adapter id=12) mirrored into SQLite `exercise_sets` for analytics readiness.
-- Stale session cleanup: sessions older than 8h without completion auto-completed during refresh.
-- Resume navigation: home panel Resume button pushes `Inividualworkout` with `sessionWorkoutId` for contextual continuity.
-
-Lifecycle
-Sign-in → write to Hive + upsert profile row.
-
-App start → hydrate from Hive + SQLite.
-
-Sign-out → clear Hive + delete profile row.
-
-5. Project Structure
-text
-Copy code
-lib/
-  main.dart
-  app.dart
-  firebase_options.dart
-  features/
-    auth/presentation/pages/welcome.dart
-    auth/presentation/pages/profile.dart (placeholder)
-    auth/data/repositories/auth_repository.dart
-    debug/sensor_demo_page.dart
-  logic/auth_bloc/
-  core/db/app_database.dart
-  core/utils/logger.dart
-assets/
-  fonts/ (Sora)
-  images/
-6. Local Development & Setup
-Prerequisites
-Flutter 3.x+
-
-Configured Firebase project (firebase_options.dart present)
-
-Run
-bash
-Copy code
-flutter pub get
-flutter run
-Regenerate Firebase Options
-bash
-Copy code
-flutterfire configure
-Notes
-Open Hive boxes before runApp() for deterministic warm start.
-
-Enable Apple Sign-In capability in Xcode for iOS.
-
-7. Quality & Next Steps
-Replace global user vars with typed Profile model + cubit.
-
-Workout logging + rep counting (signal processing → ML).
-
-Introduce go_router (deep linking, guarded routes, web URL sync).
-
-Dark mode + accessibility options.
-
-Analytics & crash reporting (consent + opt-in).
-
-CI pipeline: format, analyze, test, coverage.
-
-8. License
-Proprietary (adjust if open-sourcing).
-Add a LICENSE file when finalized.
-
-Maintained as part of the FitSense AI initiative.
+- `/home`
+- `/plans`
+- `/plans/<planId>`
+- `/workout/<sessionId>`
+- `/session/summary/<sessionId>`
+- `/history`
+- `/profile`
+- `/sensors`
 
 ---
 
-## Secrets & API Keys (Gemini)
-
-- Do not bundle .env in assets. The app no longer reads .env from assets in release builds.
-- Preferred: pass the key at build/run time using a compile-time define and it will be persisted into the device keystore via flutter_secure_storage on first run.
-  - Define name: GEMINI_API_KEY
-  - The app reads secrets in this order: secure storage → --dart-define → dotenv (dev only).
-- For local development convenience, you may create a .env file in the project root with GEMINI_API_KEY=...; it is .gitignored and not bundled into release builds. The value is read only if present during development and then persisted into secure storage.
-- Key rotation: delete the stored key from secure storage to force re-read from --dart-define or .env on next launch.
-  - iOS/macOS: clearing app data removes secure storage entries; you can also implement a small settings toggle to wipe the stored key if needed.
-- Logging hygiene: network logging is reduced and API-key-like strings are redacted from error logs to avoid accidental leakage.
-
-CI/CD guidance:
-- Inject GEMINI_API_KEY via your CI’s secret manager and pass it as a build define.
-- Never commit keys; .env is .gitignored by default.
- 
-## Workout Interaction Components (New)
-
-This subsection documents the interactive workout/session layer introduced in recent refactors, emphasizing accessibility, deterministic identifiers, and future analytics extensibility.
-
-### 1. ExerciseSetProgress
-
-Purpose: Visual + semantic representation of per-exercise set progression.
-
-Props:
-
-- totalSets (int)
-- completedSets (int) – clamped to totalSets
-- spacing / size (layout tuning)
-- animateActive (bool, default true) – disabled in tests to avoid animation flakiness.
-
-States per chip:
-
-- completed: solid green + check icon + semantics "Set 2 of 5 completed"
-- active: outlined + gentle pulse (AnimationController) + semantics "Set 3 of 5 active"
-- pending: outlined grey + semantics "Set 4 of 5 pending"
-
-Accessibility:
-
-- Root Semantics container announces overall progress.
-- Each chip individually labeled for granular traversal.
-- Animation optional; test harness sets animateActive=false.
-
-### 2. Rest Timer (Ephemeral)
-
-Lifecycle:
-
-1. Triggered when a set completes (except final session completion).
-2. Local state only (Phase 5 will consider persistence / wall-clock reconciliation).
-3. Announces remaining time at 10s intervals + final 5s countdown using SemanticsService.announce.
-
-Events (planned instrumentation): rest_started / rest_skipped.
-
-Rationale: Reduces cognitive load; defers backend modeling until adaptive rest recommendations are introduced.
-
-### 3. Pause Overlay & Recovery Banner
-
-- Pause Overlay (visual layer currently trimmed back) intended to return with a lightweight dialog semantics (scopesRoute: true). Business logic persists in SessionCubit for pause/resume.
-- Recovery Banner (OngoingSessionPanel) surfaces stale / incomplete session with "Resume" action invoking AppNavigator.resumeSession.
-
-Events:
-- pause_session / resume_session
-- recovery_banner_shown / recovery_banner_dismissed
-
-### 4. AppNavigator Helpers
-
-Centralized navigation + lifecycle guardrails around starting or resuming sessions.
-
-Responsibilities:
-
-- Deduplicate concurrent startPlan calls (double-start guard).
-- Ensure lingering incomplete session is completed or resumed deterministically before seeding a new one.
-- Provide semantic wrappers for analytics hooks (plan_start, workout_start) – TODO markers inline.
-
-Benefits:
-
-- Reduces navigation scattering (previous raw Navigator.push usage inside UI widgets).
-- Provides a single interception point for future deep-link + permission checks.
-
-### 5. State Diagram (Workout Session Flow)
-
-```text
-   ┌────────┐     startExercise       ┌────────────┐     completeSet (not last)   ┌───────────┐
-   │ ready  │ ──────────────────────▶ │ exercising │ ───────────────────────────▶ │  resting  │
-   └────────┘                         └─────┬──────┘                              └─────┬─────┘
-  ▲         resumeSession              │ completeSet (last set of exercise)       │ rest timer ends / skip
-  │                                     │                                         │
-  │                                     ▼                                         │
-  │                               (advance exercise)                              │
-  │                                     │                                         │
-  │                                     ▼                                         │
-  │                                 exercising (next) ◀────────────────────────────┘
-  │                                     │
-  │  pauseSession                      │ completeSession (final exercise complete)
-  │                                     ▼
-  ├──────────────────────────────▶ paused
-  │                                 │
-  │  resumeSession                   ▼
-  └──────────────────────────────  exercising → complete (summary screen)
-```
-
-Notes:
-
-- resting state is ephemeral; not persisted yet.
-- paused state lives in SessionRuntime (persisted partial metadata) enabling recovery after app kill.
-- All transitions funnel through SessionCubit to maintain invariants.
-
-### 6. General Integration Notes
-
-State/Data Contracts:
-
-- SessionCubit additions prefer optional fields + helper methods (non-breaking) over structural rewrites.
-- Rest period not persisted; only mode and core progress retained.
-
-Performance:
-
-- One periodic rest timer per active workout screen (cheap).
-- ExerciseSetProgress is O(n) small (n = # sets) and stable.
-- Session summary renders once post-completion (acceptable to do aggregation in build).
-
-Error Handling:
-
-- Plan exercise name resolution wrapped with safe fallback to generic labels if plan entry missing.
-- Semantics announcements are best-effort; failures are non-fatal.
-
-
-### 7. Analytics TODO Markers Recap
-
-Inline TODOs for: plan_start, workout_start, pause_session, resume_session, rest_started, rest_skipped, recovery_banner_shown, recovery_banner_dismissed.
-
-### 8. Minimal Guardrails
-
-- Double start guard: disable Start Plan button while async startPlanSession runs (AppNavigator responsibility; TODO marker).
-- Pause idempotency: ignore pause if already paused; ignore resume if not paused.
-- Recovery banner only appears when exactly one incomplete session exists.
-
-### 9. Future Persistence Considerations (Phase 5)
-
-- Persist rest start timestamp + intended duration for drift-safe background resume.
-- Record per-set rest actual duration for adaptive recommendations.
-- Integrate motion-based auto-pause (no reps & no movement).
-
----
-<details>
-<summary><strong>Full Alternate / Original Expanded Version (Preserved as requested)</strong></summary>
-
-# FitSense AI – Intelligent Fitness Companion
-
-Personalized, privacy‑aware fitness onboarding & authentication experience built with Flutter, Firebase Auth, Hive (fast session cache), and SQLite (structured profile/workout storage). A lean BLoC architecture powers a staged welcome → auth → greeting flow and lays groundwork for motion‑driven fitness intelligence.
-
-![Platforms](https://img.shields.io/badge/platform-iOS%20|%20Android%20|%20Web%20|%20Desktop-blue) ![State](https://img.shields.io/badge/state-BLoC-green) ![Firebase](https://img.shields.io/badge/backend-Firebase%20Auth-orange)
-
-## Table of Contents
-
-1. Vision & Scope  
-2. Feature Overview (Implemented)  
-3. Architecture Overview  
-4. Frontend Modules & UI Flow  
-5. Backend / Services Layer  
-6. State Management (BLoC) Flow  
-7. Data & Persistence  
-8. Theming & Styling  
-9. Security & Keys  
-10. Project Structure  
-11. Local Development & Setup  
-12. Quality & Extensibility Notes  
-13. Roadmap / Next Steps  
-14. License
-
----
-
-## 1. Vision & Scope
-
-Deliver an adaptive fitness companion: frictionless authentication, baseline profile capture, and future AI‑guided workout & motion insight features. Current milestone: polished multi‑stage entry (landing → auth → greeting), reliable session restoration, and sensor + persistence foundations for rep counting and analytics.
-
-## 2. Feature Overview (Implemented)
-
-### Frontend
-
-- Multi‑stage Welcome Flow (Landing → Auth → Greeting) with lightweight `entry` animations.
-- Google & Apple Sign‑In with staggered introduction.
-- Personalized greeting (first‑name; fallback “Friend”).
-- Lottie animation in greeting stage.
-- Simplified slide/opacity transitions (removed height expansion animation).
-- Global color + typography system (`Sora`).
-- Sensor demo page (`/sensors`) streaming accelerometer & gyroscope.
-- Navigation from greeting to sensor demo.
-- Profile placeholder route (`/profile`).
-
-### Recent Frontend Refactors
-
-- Replaced `AnimatedContainer` expansion with stateless stage enum + `Entry.offset`.
-- Sequenced greeting scale + opacity for a softer entrance.
-- Added structured logging (persistence + sensor events).
-
-### Backend / Services
-
-- Firebase init (`firebase_options.dart`).
-- Firebase Authentication (Google & Apple) + session restore.
-- Hive cache (`userBox`): uid, email, displayName, photoUrl, lastLogin.
-- SQLite (`AppDatabase`): `user_profile` (singleton) & `workouts` (future).
-- Startup hydration + sign‑out cleanup (Hive + SQLite + globals).
-- Fail‑soft DB operations (exceptions logged; UI uninterrupted).
-
-### State Management / Logic
-
-- `AuthBloc` handles start, sign‑ins, sign‑out.
-- Firebase `authStateChanges` mirrored into bloc events.
-- States: Initial, Loading, Authenticated, Unauthenticated, Error.
-- Interim global user variables (to be replaced by typed Profile layer).
-
-### Data Model & Persistence
-
-- Non‑sensitive display fields + timestamps cached.
-- Extended profile scaffold: age, weight_kg, height_cm, gender, goals (CSV), primary_goal, updated_at.
-- `workouts` table reserved for future session logging + analytics.
-
-### Animations & UX
-
-- Entry offset / scale / opacity only (deterministic & performant).
-- Planned reduce‑motion + dark theme options.
-
-### Resilience / Edge Handling
-
-- Remote logout returns to landing stage.
-- Provider cancel gracefully reverts to unauthenticated.
-- Corrupt Hive entries trapped (try/catch) – fall back to fresh auth.
-- SQLite absence tolerated (auth still functions).
-
-## 3. Architecture Overview
-
-```text
-Presentation (Widgets)
-  -> State (BLoC: AuthBloc)
-    -> Repository (AuthRepository over FirebaseAuth + providers)
-      -> External Services (Firebase, Google Sign-In, Apple Sign-In)
-Persistence: Hive (fast session cache) + SQLite (structured profile/workouts)
-```
-
-Principles: clear layering, predictable state, fail‑soft persistence, incremental evolution.
-
-## 4. Frontend Modules & UI Flow
-
-### Screens
-
-- WelcomeScreen (Landing → Auth → Greeting)
-- ProfilePage (placeholder)
-- SensorDemoPage (live motion visualization)
-- MyHomePage (future dashboard)
-
-### Concepts
-
-- Stage enum drives conditional rendering & entry transitions.
-- Declarative `Entry.offset/scale/opacity` chains vs implicit layout animations.
-- Central color/typography tokens (future dedicated theme module).
-
-### Navigation
-
-Static `MaterialApp` routes: `/`, `/home`, `/profile`, `/sensors` (candidate for `go_router` to add deep linking + guards).
-
-## 5. Backend / Services Layer
-
-Authentication + local profile caching + sensor groundwork. Firestore & remote sync deferred until profile enrichment + workout logging stabilize.
-
-## 6. State Management (BLoC) Flow
-
-```text
-AuthStarted -> AuthAuthenticated | AuthUnauthenticated
-AuthSignInWithGoogleRequested -> Loading -> Authenticated | Unauthenticated | Error
-AuthSignInWithAppleRequested  -> Loading -> Authenticated | Unauthenticated | Error
-AuthSignOutRequested          -> Loading -> Unauthenticated | Error
-```
-
-`authStateChanges` subscription ensures UI reflects canonical Firebase state.
-
-## 7. Data & Persistence
-
-### Hive (Fast Session Cache)
-
-`userBox`: uid, email, displayName, photoUrl, lastLogin.
-
-### SQLite (Structured)
-
-`user_profile` (id=1) extended fields; `workouts` prepared for session logs.
-
-### Sync Lifecycle
-
-1. Sign‑in → Update globals + Hive → Upsert SQLite profile row.  
-2. App start → Hive session check → Hydrate extended profile from SQLite.  
-3. Sign‑out → Firebase sign‑out → Clear Hive + delete SQLite row + reset globals.
-
-Rationale: Hive accelerates hot path; SQLite enables relational growth & offline analytics.
-
-## 8. Theming & Styling
-
-- Seed `ColorScheme` + curated overrides.
-- `Sora` typography (selected weights for bundle efficiency).
-- Planned: dark mode & high‑contrast accessibility variant.
-
-## 9. Security & Keys
-
-- Firebase client keys: public by design; restrict via bundle ID / SHA / domain.
-- No server secrets or custom tokens stored locally.
-- Planned: consent‑based analytics & crash reporting toggles.
-
-## 10. Project Structure
+## Project Structure
 
 ```text
 lib/
-  main.dart                  # Bootstrap & initialization
-  app.dart                   # Root scaffold
-  firebase_options.dart      # Generated Firebase config
-  features/
-    auth/
-      presentation/pages/welcome.dart
-      presentation/pages/profile.dart
-      data/repositories/auth_repository.dart
-    debug/sensor_demo_page.dart
-  logic/auth_bloc/            # AuthBloc, events, states
+  main.dart                         # bootstrap: Firebase/Hive/DI/blocs
+  app.dart                          # root app shell + home tabs
+
   core/
-    db/app_database.dart      # SQLite (profile/workouts)
-    utils/logger.dart         # Logging helpers
-assets/
-  fonts/
-  images/
+    config/                         # secrets/config helpers
+    db/                             # SQLite bootstrap + migrations + indexing
+    models/                         # workout/session/set/plan/runtime models
+    navigation/                     # route names + navigation helpers
+    network/                        # Gemini/network clients
+    services/                       # local storage + encryption services
+    stats/                          # minutes + aggregate services
+    ui/                             # design tokens, reusable styles/widgets
+    utils/                          # formatters/logging/id helpers
+
+  features/
+    auth/                           # onboarding/auth/profile flows
+    home/                           # home dashboard, quick actions, recovery panel
+    workout/                        # plan/session pages, summary, set progress UI
+    sensors/                        # sensor repository integration
+    altrix/                         # chat-related feature area
+    audit/                          # in-app audit visibility dashboard
+    debug/                          # debug pages (sensor demo)
+
+  logic/
+    auth_bloc/
+    session/
+    workouts/
+
+test/                               # unit/widget/integration-oriented tests
+scripts/run-audit.sh                # local security/quality scan helper
+.github/workflows/security-audit.yml
 ```
 
-## 11. Local Development & Setup
+---
+
+## Getting Started
 
 ### Prerequisites
 
-- Flutter 3.x+
-- Dart SDK (bundled)
-- Firebase project configured (options file present)
+- Flutter SDK installed and available in `PATH`
+- Dart SDK (bundled with Flutter)
+- platform toolchains as needed:
+  - Android Studio / Android SDK
+  - Xcode (for iOS/macOS)
+  - Chrome (for web)
+- Firebase project configured for your app targets
 
-### Run
+### 1) Install dependencies
 
 ```bash
 flutter pub get
-flutter run
 ```
 
-Apple Sign‑In: enable capability in Xcode & confirm bundle ID + entitlement settings.
+### 2) Configure Firebase (if needed)
 
-### Regenerate Firebase Options
+If Firebase options are not already aligned to your environment:
 
 ```bash
 flutterfire configure
 ```
 
-### Hive Notes
+### 3) Configure environment values (optional/local)
 
-Open boxes before `runApp()` for deterministic warm start.
+```bash
+cp .env.example .env
+```
 
-## 12. Quality & Extensibility Notes
+Then set values in `.env` for local development (do **not** commit `.env`).
 
-- Add unit tests (AuthRepository, AppDatabase CRUD, AuthBloc transitions).
-- Replace global user vars with typed Profile model + ProfileCubit.
-- Migrate to `go_router` (deep linking, guarded routes, web URL sync).
-- Add Crashlytics & Analytics (consent gating & opt‑in privacy controls).
-- Accessibility: reduce‑motion toggle, text scale audits, high contrast theme.
-- Workout DAO & analytics pre‑processing (rep segmentation pipeline foundation).
-- CI pipeline (format, analyze, test) via GitHub Actions.
-- Sensor smoothing & baseline rep detection (peak/trough heuristics → ML refinement later).
+### 4) Run the app
 
-## 13. Roadmap / Next Steps
+```bash
+flutter run
+```
 
-- Profile completion UI (anthropometrics, goals, units)  
-- Workout session logging & timeline  
-- Rep counting & motion classification (signal processing → ML)  
-- AI workout recommendation (serverless inference endpoints)  
-- Firestore sync & offline conflict resolution  
-- Data export (CSV / JSON)  
-- Dark & high‑contrast themes  
+You can also target a specific platform/device:
 
-## 14. License
-
-Proprietary (adjust if open-sourcing). Add a LICENSE file when finalized.
+```bash
+flutter run -d chrome
+flutter run -d macos
+flutter run -d ios
+flutter run -d android
+```
 
 ---
-> Maintained as part of the FitSense AI initiative. Open an issue to propose architectural improvements.
 
+## Configuration & Secrets
 
+FitSense AI supports secure key loading with a preference for safer runtime mechanisms.
+
+### Gemini API key
+
+`GEMINI_API_KEY` can be supplied through:
+
+1. secure storage (persisted on device after first retrieval),
+2. compile-time define (`--dart-define=GEMINI_API_KEY=...`),
+3. local `.env` (development convenience).
+
+Example:
+
+```bash
+flutter run --dart-define=GEMINI_API_KEY=your_key
+```
+
+### Security notes
+
+- Do **not** commit `.env`.
+- Firebase client config files are identifiers, not admin secrets—but backend rules must still be locked down.
+- Sensitive local data hardening is tracked in `SECURITY.md`.
+
+---
+
+## Quality, Testing, and Security Checks
+
+### Lint / static checks
+
+```bash
+flutter analyze
+```
+
+### Run tests
+
+```bash
+flutter test --reporter=expanded
+```
+
+### Run local audit bundle
+
+```bash
+bash scripts/run-audit.sh
+```
+
+The audit script orchestrates analysis/tests plus security-oriented scans (OSV, Semgrep, detect-secrets) in a best-effort developer flow.
+
+### CI
+
+GitHub Actions workflow: `.github/workflows/security-audit.yml`
+
+CI includes:
+
+- dependency install,
+- `flutter analyze`,
+- test execution,
+- OSV vulnerability scanning (dependency CVE/advisory checks),
+- Semgrep static security scanning (code-pattern security linting),
+- detect-secrets checks (secret leakage detection in source).
+
+---
+
+## Workout Session Model
+
+FitSense AI uses deterministic IDs to make session resumption, analytics mapping, and future deep links more reliable.
+
+### ID strategy
+
+```text
+workoutId  = plan_<planId>_<epochMillis>
+exerciseId = plan_<planId>ex<index>
+```
+
+### Lifecycle overview
+
+```text
+Start plan
+  -> seed exercise queue
+  -> start first exercise
+  -> increment reps / complete sets
+  -> advance through queue
+  -> complete session
+  -> navigate to summary
+```
+
+### Persistence behavior
+
+- Hive is the fast-access source for active state and recent data.
+- SQLite mirrors session data for structured queries and analytics-readiness.
+- Recovery logic reconstructs active context from persisted progress.
+
+---
+
+## Key Documentation
+
+If you want deeper project internals, start here:
+
+- **Security policy and hardening checklist**: `SECURITY.md`
+- **Detailed source map**: `FILE_DOCUMENTATION.md`
+- **Session consistency contracts**: `CONSISTENCY.md`
+- **Edge-case behavior references**: `EDGE_CASES.md`
+- **Implementation roadmap**: `NEXT_STEPS.md`
+- **Audit report**: `docs/audit-report.md`
+- **Structured findings**: `docs/findings.csv`
+- **Threat model (Mermaid)**: `docs/dfd.mmd`
+
+---
+
+## Roadmap
+
+High-priority themes:
+
+- improve session analytics depth (volume, density, trends),
+- complete deep-link and resume UX hardening,
+- expand observability and crash/error monitoring,
+- strengthen encryption posture across all local sensitive stores,
+- support optional cloud sync and portable export/import.
+
+---
+
+## Troubleshooting
+
+### `flutter: command not found`
+
+Install Flutter SDK and ensure `flutter` is available in shell `PATH`.
+
+### Sign-in issues on iOS
+
+Verify Apple Sign-In capability and Firebase OAuth client configuration.
+
+### Firebase init/runtime issues
+
+Confirm project files and options are aligned for each platform (`lib/firebase_options.dart`, Android/iOS Firebase config files).
+
+### Session not resuming as expected
+
+Check session persistence state in Hive and mirrored SQLite entries, then review `SessionCubit` logic and edge-case docs.
+
+---
+
+## License
+
+No `LICENSE` file is currently included in this repository.
+
+Until a license file is added, treat usage/distribution as restricted by default and coordinate with the maintainers.
+
+---
+
+If you're contributing to architecture or data-layer behavior, please review `CONSISTENCY.md` and `EDGE_CASES.md` before making session-related changes.
